@@ -325,3 +325,66 @@ def prepare_feature_vectors(df,df_train,df_demo,df_demo_train,df_patients,ids_IC
 
     return X, y     
    
+    
+
+    
+def create_feature_window(df,df_train,df_demo,df_demo_train,n,variables,idx):
+    """
+    Samples feature vectors from the input dfs. 
+
+    Parameters
+    ----------
+    df : pd.DataFrame
+        df with data of inidividual patient until moment of sampling
+    df_train: pd.DataFrame
+        df containing training set. Imputed values are based on the training set. 
+    df_demo: pd.DataFrame
+        demograhics df to sample from.
+    df_demo_train: pd.DataFrame
+        demograhics df containing the training set. Imputed values are based on the training set. 
+    n: int
+        feature_window
+    variables: np.array[str]
+        Array of strings representing the names of the variables to be included in the model.
+    idx: str
+        patient ID
+        
+    Returns
+    -------
+    v: feature vector
+    type : np.array
+    """
+    v = list() #define empty feature vector
+        
+    df_demo_train = df_demo_train.dropna()
+    
+    #Add demographics 
+    for col in df_demo.columns[1:]:
+        
+        ff_spec.append(0)
+        
+        if df_demo.loc[df_demo['ID'] == idx][col].notnull().sum() == 0:
+            v.extend(df_demo_train.loc[:,col].median()*np.ones(1))
+        else:
+            v.extend(df_demo.loc[df_demo['ID'] == idx][col])
+    
+    # Add labs / vitals
+    
+    for item in variables: #loop over features
+        
+        temp = df[df['VARIABLE']==item] # Extract snippet with only this feature
+        
+        if temp.shape[0] < 1: # If snippet contains none for this feature
+            a = np.ones(n)*np.median(df_train[df_train['VARIABLE']==item]['VALUE']) #Impute with median imputer
+            v.extend(a)
+            
+        elif temp.shape[0] < n: # If snippet contains less than n values for feature, impute with most recent value
+            a = np.concatenate((temp['VALUE'].tail(temp.shape[0]).values, 
+                                np.ones(n-temp.shape[0])*temp['VALUE'].tail(1).values), axis=None)
+            v.extend(a)
+            
+        else: #if snippet contains n or more values, take n most recent values
+            a = temp['VALUE'].tail(n).values
+            v.extend(a)          
+            
+    return v
