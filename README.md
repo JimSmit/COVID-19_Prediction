@@ -19,7 +19,7 @@ Thus, only feature vectors sampled between 20 and 84 hours before the moment of 
 
 Feature vectors were only labeled positive if the 'event' (patient's death is this case) occured somewhere between 20 and 84 hours after the timestamp of the feature vector (the time of prediction). That means, this sampling strategy forces a model to predict a patient death in a prediction window of 64 hours, with a gap of 20 hours between the moment of prediction and the start of the prediction window. 
 
-<img src="https://raw.githubusercontent.com/JimSmit/COVID-19_Prediction/main/images/windows.PNG" width="300">
+<img src="https://raw.githubusercontent.com/JimSmit/COVID-19_Prediction/main/images/windows.png" width="500">
 
 About these windows, the authors write the following:
 
@@ -29,12 +29,12 @@ About these windows, the authors write the following:
 As the distribution of positive and negative feature vectors was imbalanced, the negative feature samples were drandomly downsampled untill bith classes were balanced. 
 A Random Forest was trained. Model hyperparameters were optimized using the following search spaces.
 
-<img src="https://raw.githubusercontent.com/JimSmit/COVID-19_Prediction/main/images/hyper.PNG" width="300">
+<img src="https://raw.githubusercontent.com/JimSmit/COVID-19_Prediction/main/images/hyper.PNG" width="500">
 
 ## Results
 The authors report the following results.
 
-<img src="https://raw.githubusercontent.com/JimSmit/COVID-19_Prediction/main/images/results.PNG" width="300">
+<img src="https://raw.githubusercontent.com/JimSmit/COVID-19_Prediction/main/images/results.PNG" width="600">
 
 ## Model Implementation
 In this post, a Python implementation is presented to train and validate a model in the same fashion as being done in the discussed paper. Therby, some extra implementations are added:
