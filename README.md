@@ -9,6 +9,8 @@ The authors write the following about their labeling srategy:
 
 "The interval between the time of discharge and the time of generating each feature vector was generated daily for each patient. If the discharge disposition was ‘Expired (ie, dead)’ and the interval was between 20 and 84 hours, we labelled the feature vectors as positive. If the discharge disposition was ‘Not Expired’ and the interval was between 20 and 84 hours, we labelled the feature vectors negative. We excluded the remaining feature vectors from our cohort."
 
+![positive_feature_vector](https://your-copied-image-address)
+![negative_feature_vector](https://your-copied-image-address)
 
 
 
