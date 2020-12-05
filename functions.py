@@ -388,3 +388,43 @@ def create_feature_window(df,df_train,df_demo,df_demo_train,n,variables,idx):
             v.extend(a)          
             
     return v
+
+
+def balancer(X,y,undersampling=True):
+    print('balancer triggered')
+    """
+    Balences classes.
+
+    Parameters
+    ----------
+    X: np.array
+        matrix [N feature vectors x N variables] with feature vectors
+    y: np.array
+        label vector [N feature vectors x 1]
+    undersampling: optional: bool
+        if True, use random undersampling. If False, use random oversampling.
+    
+    Returns
+    -------
+    X_bal: np.array
+        balanced matrix [N feature vectors x N variables] with feature vectors
+    y_bal: np.array
+        balanced label vector [N feature vectors x 1]
+    type : np.array
+    """
+    import imblearn
+    from imblearn.under_sampling import RandomUnderSampler
+    from imblearn.over_sampling import RandomOverSampler
+
+    if undersampling:
+        undersample = RandomUnderSampler(sampling_strategy='majority')
+        print('Rebalance classes by random undersampling')
+        X_bal, y_bal = undersample.fit_resample(X, y)
+    else:
+        
+        oversample = RandomOverSampler(sampling_strategy='minority')
+        print('Rebalance classes by random oversampling')
+        X_bal, y_bal = oversample.fit_resample(X, y)
+    
+    print('After balancing: \n shape X',X_bal.shape,'n pos',sum(y_bal), 'n neg', len(y_bal)-sum(y_bal))
+    return X_bal, y_bal
