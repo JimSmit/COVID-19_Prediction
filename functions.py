@@ -231,8 +231,8 @@ def prepare_feature_vectors(df,df_train,df_demo,df_demo_train,df_patients,ids_IC
         df_pos = df[df['DEPARTMENT'].contains('ICU')] 
         df_neg = df[~df['DEPARTMENT'].contains('ICU')]
 
-    print('pos df:',df_pos.shape, '-->',len(df_pos['PATIENTNR'].unique()), 'patients')
-    print('neg df:',df_neg.shape, '-->',len(df_neg['PATIENTNR'].unique()), 'patients')
+    print('pos df:',df_pos.shape, '-->',len(df_pos['ID'].unique()), 'patients')
+    print('neg df:',df_neg.shape, '-->',len(df_neg['ID'].unique()), 'patients')
 
     print('-----Sampling for positive patients-----') 
 
