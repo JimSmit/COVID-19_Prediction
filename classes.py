@@ -31,38 +31,29 @@ class Parchure:
         
         self.df_train,self.df_val,self.df_test, self.df_demo_train,self.df_demo_val,self.df_demo_test = df_preparer(self.df,self.features,
                                                                             val_share,test_share,random_state) 
-        self.df_train_raw,self.df_val_raw, _ , self.df_demo_train_raw,self.df_demo_val_raw, _ = df_preparer(self.df,self.features,
-                                                                     val_share,test_share,random_state,norm=False) 
+        
     
-    def Build_feature_vectors(self,i,pred_window,gap,int_neg,int_pos,feature_window,name,label_type='ICU'):
+    def Build_feature_vectors(self,i,pred_window,gap,int_neg,int_pos,feature_window,name,label_type='mortality'):
        
                    
         print('TRAINING DATA')
-        self.X_train,self.y_train,imputation_train,feature_imputation,_ = prepare_feature_vectors(self.df_train, self.df_train, self.df_demo_train,self.df_demo_train,self.df_patients,
+        self.X_train,self.y_train,imputation_train,feature_imputation,_ = prepare_feature_vectors(self.df_train, self.df_train, self.df_demo_train,self.df_demo_train,
                                                                           self.ids_events,pred_window,gap,int_neg,int_pos,feature_window,self.features,
                                                                         label_type=label_type)
        
         
         print('VALIDATION DATA')
-        self.X_val,self.y_val,imputation_val,_,self.val_pos = prepare_feature_vectors(self.df_val, self.df_train, self.df_demo_val,self.df_demo_train,self.df_patients,
+        self.X_val,self.y_val,imputation_val,_,self.val_pos = prepare_feature_vectors(self.df_val, self.df_train, self.df_demo_val,self.df_demo_train,
                                                                         self.ids_events,pred_window,gap,int_neg,int_pos,feature_window,self.features,
                                                                         label_type=label_type)
         print('TEST DATA')
-        self.X_test,self.y_test,imputation_test,_,_ = prepare_feature_vectors(self.df_test, self.df_train, self.df_demo_test,self.df_demo_train,self.df_patients,
+        self.X_test,self.y_test,imputation_test,_,_ = prepare_feature_vectors(self.df_test, self.df_train, self.df_demo_test,self.df_demo_train,
                                                                         self.ids_events,pred_window,gap,int_neg,int_pos,feature_window,self.features,
                                                                         label_type=label_type)
-        
-        if i == 1:
-            general_imputation = pd.DataFrame([imputation_train,imputation_val,imputation_test])
-            df = stacked_barchart(['train','val','test'],general_imputation,'general_imp_'+name)
-            df = stacked_barchart(['BMI','AGE']+list(self.features),feature_imputation,'feature_sepc_imp_'+name)
     
     def Balance(self, undersampling = True):
         
-        self.X_train_bal,self.y_train_bal = balancer(self.X_train,self.y_train,undersampling = undersampling)
-        # self.X_val,self.y_val = balancer(self.X_val,self.y_val,undersampling = undersampling)
-        # self.X_test,self.y_test = balancer(self.X_test,self.y_test,undersampling = undersampling)
-        
+        self.X_train_bal,self.y_train_bal = balancer(self.X_train,self.y_train,undersampling = undersampling)        
         
     def Train(self,model='RF',balance=True):
         if balance:
@@ -77,5 +68,4 @@ class Parchure:
         auc,tn, fp, fn, tp,precision,recall = evaluate_metrics(self.clf,self.X_val,self.y_val)
         plot_roc_curve(self.clf, self.X_val, self.y_val)
         plot_PR_curve(precision,recall)
-        # print('unique patients in validation set:',np.unique(self.X_val['PATIENTNR']))
         return auc,tn, fp, fn, tp
