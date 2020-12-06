@@ -8,14 +8,8 @@ The primary outcome of interest was in- hospital death within 20–84 hours from
 For every patient, daily feature vectors daily feature vectors starting from admission date until the date of discharge or death were build.
 For these feature vectors, the three most recent recorded assessments from time-series data that were available when each feature vector was created, were used.
 
-The authors write the following about their labeling srategy:
-
-"The interval between the time of discharge and the time of generating each feature vector was generated daily for each patient. If the discharge disposition was ‘Expired (ie, dead)’ and the interval was between 20 and 84 hours, we labelled the feature vectors as positive. If the discharge disposition was ‘Not Expired’ and the interval was between 20 and 84 hours, we labelled the feature vectors negative. We excluded the remaining feature vectors from our cohort."
-
 <img src="https://raw.githubusercontent.com/JimSmit/COVID-19_Prediction/main/images/pos_label.PNG" width="300">
 <img src="https://raw.githubusercontent.com/JimSmit/COVID-19_Prediction/main/images/neg_label.PNG" width="300">
-
-Thus, only feature vectors sampled between 20 and 84 hours before the moment of discharge were included. 
 
 Feature vectors were only labeled positive if the 'event' (patient's death is this case) occured somewhere between 20 and 84 hours after the timestamp of the feature vector (the time of prediction). That means, this sampling strategy forces a model to predict a patient death in a prediction window of 64 hours, with a gap of 20 hours between the moment of prediction and the start of the prediction window. 
 
@@ -24,6 +18,17 @@ Feature vectors were only labeled positive if the 'event' (patient's death is th
 About these windows, the authors write the following:
 
 "For pragmatic reasons, we defined near- term outcomes as those occurring between 20 and 84 hours from the prediction time. Approximately a day (20 hours) would allow time for providers for manual assessment by clinicians, trying interventions to prevent further deterioration and for performing the goals- of- care and/or palliative care consultations to develop an indi- vidualised plan of care after their clinical assessment. The 3 days horizon (72 hours) was extended by 12 hours for operational reasons of accommodating a complete day at a hospital until evening."
+
+Furthermore, the authors write the following about their labeling srategy:
+
+"The interval between the time of discharge and the time of generating each feature vector was generated daily for each patient. If the discharge disposition was ‘Expired (ie, dead)’ and the interval was between 20 and 84 hours, we labelled the feature vectors as positive. If the discharge disposition was ‘Not Expired’ and the interval was between 20 and 84 hours, we labelled the feature vectors negative. We excluded the remaining feature vectors from our cohort."
+
+Thus, feature vectors were sampled daily between 20 and 84 hours before the moment of discharge. If a patient was dead at moment of discharge, the feature vector was labeled poitive, and negative otherwise. 
+
+Below is a schematic overview of this sampling strategy:
+<img src="https://raw.githubusercontent.com/JimSmit/COVID-19_Prediction/main/images/sampling_startegy_parchure.png" width="600">
+
+
 
 ## Modeling
 As the distribution of positive and negative feature vectors was imbalanced, the negative feature samples were drandomly downsampled untill bith classes were balanced. 
@@ -35,6 +40,7 @@ A Random Forest was trained. Model hyperparameters were optimized using the foll
 The authors report the following results.
 
 <img src="https://raw.githubusercontent.com/JimSmit/COVID-19_Prediction/main/images/results.PNG" width="600">
+<img src="https://raw.githubusercontent.com/JimSmit/COVID-19_Prediction/main/images/results_plot.PNG" width="600">
 
 ## Model Implementation
 In this post, a Python implementation is presented to train and validate a model in the same fashion as being done in the discussed paper. Therby, some extra implementations are added:
