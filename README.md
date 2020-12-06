@@ -27,7 +27,7 @@ Thus, feature vectors were sampled daily between 20 and 84 hours before the mome
 
 Below is a schematic overview of this sampling strategy:
 
-<img src="https://raw.githubusercontent.com/JimSmit/COVID-19_Prediction/main/images/sampling_startegy_parchure.png" width="600">
+<img src="https://raw.githubusercontent.com/JimSmit/COVID-19_Prediction/main/images/sampling_startegy_parchure.png" width="700">
 
 
 
@@ -46,8 +46,11 @@ The authors report the following results.
 ## Model Implementation
 In this post, a Python implementation is presented to train and validate a model in the same fashion as being done in the discussed paper. Therby, some extra implementations are added:
 - The size of the feature window (i.e. the number of most recent recorded assessments from time-series data to be included in the feature vector), prediction window and gap can be varied.
-- The sampling strategy can be varied as well. As the paper describes a sampling strategy that only includes feature vectors sampled within 20 and 84 hours from the moment of discharge, the performance of the model is likely to be overestimated, as we remain uninformed about the model's performance on feature vectors sampled earlier during hospitalization. For example, would the model be able to distinguish between a feature vector sampled from a patient who eventually dies, 1 sampled 72 hours before disharge (so labeled positive) and 1 96 hours before discharge (so labeled negative)? In this implementation, we include feature vectors sampled during the whole stay of a patient, were the sampling frequency can be varied.
+- The sampling strategy can be varied as well. As the paper describes a sampling strategy that only includes feature vectors sampled within 20 and 84 hours from the moment of discharge, the performance of the model is likely to be overestimated, as we remain uninformed about the model's performance on feature vectors sampled earlier during hospitalization. 
 
+For example, would the model be able to distinguish between a feature vector sampled from a patient who eventually dies, 1 sampled 72 hours before disharge (so labeled positive) and 1 96 hours before discharge (so labeled negative)? In this implementation, we include feature vectors sampled during the whole stay of a patient, were the sampling frequency can be tuned for negative and positve feature vectors. We implementen the parameters 'int_neg' and 'int_pos' as the intervals (in hours) between every feeature vector being sampled for the negative and positive class respectively. 
+
+<img src="https://raw.githubusercontent.com/JimSmit/COVID-19_Prediction/main/images/sampling_startegy_new.png" width="700">
 
 
 
