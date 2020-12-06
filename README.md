@@ -41,8 +41,6 @@ In this post, a Python implementation is presented to train and validate a model
 - The size of the feature window (i.e. the number of most recent recorded assessments from time-series data to be included in the feature vector), prediction window and gap can be varied.
 - The sampling strategy can be varied as well. As the paper describes a sampling strategy that only includes feature vectors sampled within 20 and 84 hours from the moment of discharge, the performance of the model is likely to be overestimated, as we remain uninformed about the model's performance on feature vectors sampled earlier during hospitalization. For example, would the model be able to distinguish between a feature vector sampled from a patient who eventually dies, 1 sampled 72 hours before disharge (so labeled positive) and 1 96 hours before discharge (so labeled negative)? In this implementation, we include feature vectors sampled during the whole stay of a patient, were the sampling frequency can be varied.
 
-- A nested cross-validation. So the data is originally split in a train set and a validation set. The train set itself is again splitup in a train and test set. The hyperparameter optimization is performed in a K-vold cross validation using the train and test set. The final results are based on the model's performance on the unseen validation set. The data is split on patient level, which means that feature vectors sampled from the same patient can only be included in either the train, test or validation set. 
-- A function is added to show the real-time model risks om an individual patient level. This to visualize how the model would act if it would have been implemented in real clinical practise.
 
 
 
