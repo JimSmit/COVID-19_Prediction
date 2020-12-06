@@ -430,6 +430,8 @@ def balancer(X,y,undersampling=True):
     return X_bal, y_bal
 
 
+
+
 def train_model(X_train,y_train,X_test,y_test,model):
     print('train_model triggered')
     
@@ -493,11 +495,11 @@ def train_model(X_train,y_train,X_test,y_test,model):
     clf.fit(X_train, y_train)
     print(clf.classes_)
     print('Performance on test set with unoptimized model:')
-    base_auc,_,_,_,_ = evaluate_metrics(clf, X_test, y_test)
+    base_auc,_,_,_,_,_,_ = evaluate_metrics(clf, X_test, y_test)
     
     clf_opt = rf_grid.best_estimator_
     print('Perfromance on test set with optimized model:')
-    opt_auc,_,_,_,_ = evaluate_metrics(clf_opt, X_test,y_test)
+    opt_auc,_,_,_,_,_,_ = evaluate_metrics(clf_opt, X_test,y_test)
     
     print('Improvement of {:0.2f}%.'.format( 100 * (opt_auc - base_auc) / opt_auc))
     
@@ -512,3 +514,69 @@ def train_model(X_train,y_train,X_test,y_test,model):
 
     
     return clf_ret,train_auc,explainer
+
+
+def evaluate_metrics(model, test_features, test_labels):
+     
+    """
+    Calculates evaluation metrics
+
+    Parameters
+    ----------
+    model: object
+        Trained model
+    test_features: np.array
+        feature matrix for set to be evalutated [N feature vectors x M variables] 
+    test_labels: np.array
+        label vector for set to be evaluated [N feature vectors x 1] 
+    
+    Returns
+    -------
+    auc: float
+        Area under the ROC curve 
+    tn: int
+        Number of true negatives
+    fp: int
+        numer of false positives
+    fn: int
+        number of false negatives
+    tp: int
+        number of true positives
+    precision: np.array
+        array with precisions for different threshold values
+    recall: np.array
+        array with recalls for different threshold values
+    """
+    from sklearn.metrics import roc_auc_score
+    from sklearn.metrics import confusion_matrix
+    from sklearn.metrics import precision_recall_curve
+    
+    predictions = model.predict_proba(test_features)[:,1]
+    auc = roc_auc_score(test_labels, predictions)
+    tn, fp, fn, tp = confusion_matrix(test_labels, model.predict(test_features)).ravel()
+    
+    print('Model Performance:',auc)
+    print('TN:',tn,'FP:',fp,'FN:',fn,'TP:',tp)
+    print('sens:',np.round(tp/(tp+fn),2),'spec:',np.round(tn/(tn+fp),2))
+    print('Recall:',np.round(tp/(tp+fn),2),'Pecision:',np.round(tp/(tp+fp),2))
+    
+    precision, recall, thresholds = precision_recall_curve(test_labels, predictions)
+    
+    return auc,tn, fp, fn, tp,precision,recall
+    
+def plot_PR_curve(precision,recall):
+    import matplotlib.pyplot as plt
+    fig = plt.figure()
+    plt.plot(precision,recall)
+    plt.xlabel('Precision')
+    plt.ylabel('Recall')
+    
+    plt.savefig('PR_curve')
+    
+def plot_roc_curve(clf,X_val,y_val):
+    import matplotlib.pyplot as plt
+    from sklearn import metrics
+    fig = plt.figure()
+    metrics.plot_roc_curve(clf, X_val, y_val)
+    plt.savefig('ROC_curve')
+
