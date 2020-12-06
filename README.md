@@ -26,6 +26,7 @@ Furthermore, the authors write the following about their labeling srategy:
 Thus, feature vectors were sampled daily between 20 and 84 hours before the moment of discharge. If a patient was dead at moment of discharge, the feature vector was labeled poitive, and negative otherwise. 
 
 Below is a schematic overview of this sampling strategy:
+
 <img src="https://raw.githubusercontent.com/JimSmit/COVID-19_Prediction/main/images/sampling_startegy_parchure.png" width="600">
 
 
