@@ -33,7 +33,7 @@ class Parchure:
                                                                             val_share,test_share,random_state) 
         
     
-    def Build_feature_vectors(self,i,pred_window,gap,int_neg,int_pos,feature_window,name,label_type='mortality'):
+    def Build_feature_vectors(self,pred_window,gap,int_neg,int_pos,feature_window,label_type='mortality'):
        
                    
         print('TRAINING DATA')
