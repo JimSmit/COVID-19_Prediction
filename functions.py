@@ -428,3 +428,87 @@ def balancer(X,y,undersampling=True):
     
     print('After balancing: \n shape X',X_bal.shape,'n pos',sum(y_bal), 'n neg', len(y_bal)-sum(y_bal))
     return X_bal, y_bal
+
+
+def train_model(X_train,y_train,X_test,y_test,model):
+    print('train_model triggered')
+    
+    """
+    Balences classes.
+
+    Parameters
+    ----------
+    X_train: np.array
+        Train set featurematrix [N feature vectors x N variables] with feature vectors
+    y_train: np.array
+        Train set label vector [N feature vectors x 1]
+    X_test: np.array
+        Test set featurematrix [N feature vectors x N variables] with feature vectors
+    y_test: np.array
+        Test set label vector [N feature vectors x 1]
+    model: str
+        model type: "LR" or "RF"
+    
+    Returns
+    -------
+    clf_ret: object
+        trained classifier to be returned
+    train_auc: float
+        Area under the curve for model's performance on the train set
+    explainer: object
+        explainer for Shapley values based on the trained classifier
+    """
+    
+    from sklearn.model_selection import RandomizedSearchCV, GridSearchCV
+    from sklearn.linear_model import LogisticRegression
+    from sklearn.ensemble import RandomForestClassifier
+    import shap
+    
+    if model == 'RF':
+        
+        
+        n_estimators = [500,600] # Number of trees in random forest
+        max_features = ['auto', 'log2',0.33] # Number of features to consider at every split
+        max_depth = [3,5,7,9,11] # Maximum number of levels in tree, make not to deep to prevent overfitting
+        
+        param_grid = {'n_estimators': n_estimators,
+                       'max_features': max_features,
+                        'max_depth': max_depth
+                       }
+        
+        clf = RandomForestClassifier()
+        
+    elif model == 'LR':
+        
+        param_grid = {'penalty':['l1', 'l2'],'C': [0.001,0.01,0.1,1,10,100,1000],
+                       'solver': ['liblinear']}
+        clf = LogisticRegression(max_iter=1000)
+        
+    rf_grid = GridSearchCV(estimator = clf, param_grid = param_grid,
+                                   cv = 10, verbose=0, n_jobs = -1)
+    
+    rf_grid.fit(X_train, y_train)
+    print(rf_grid.best_params_)
+    
+    clf.fit(X_train, y_train)
+    print(clf.classes_)
+    print('Performance on test set with unoptimized model:')
+    base_auc,_,_,_,_ = evaluate_metrics(clf, X_test, y_test)
+    
+    clf_opt = rf_grid.best_estimator_
+    print('Perfromance on test set with optimized model:')
+    opt_auc,_,_,_,_ = evaluate_metrics(clf_opt, X_test,y_test)
+    
+    print('Improvement of {:0.2f}%.'.format( 100 * (opt_auc - base_auc) / opt_auc))
+    
+    #Pick the model with best performance on the test set
+    if opt_auc > base_auc:
+        clf_ret = clf_opt
+    else:
+        clf_ret = clf
+
+    train_auc = max(opt_auc,base_auc)
+    explainer = shap.TreeExplainer(clf_ret)
+
+    
+    return clf_ret,train_auc,explainer
