@@ -5,7 +5,7 @@ In their paper in the BMJ Supportive & Palliative Care in July 2020 [1], Parchur
 The primary outcome of interest was in- hospital death within 20–84 hours from the time of prediction.
 
 ## Sampling strategy
-For every patient, daily feature vectors daily feature vectors starting from admission date until the date of discharge or death were build.
+For every patient, **daily** feature vectors daily feature vectors starting from admission date until the date of discharge or death were build.
 For these feature vectors, the three most recent recorded assessments from time-series data that were available when each feature vector was created, were used.
 
 <img src="https://raw.githubusercontent.com/JimSmit/COVID-19_Prediction/main/images/pos_label.PNG" width="300">
@@ -13,17 +13,21 @@ For these feature vectors, the three most recent recorded assessments from time-
 
 Feature vectors were only labeled positive if the 'event' (patient's death is this case) occured somewhere between 20 and 84 hours after the timestamp of the feature vector (the time of prediction). That means, this sampling strategy forces a model to predict a patient death in a prediction window of 64 hours, with a gap of 20 hours between the moment of prediction and the start of the prediction window. 
 
+**Feature window**: 3 most recent accessments of variable (so actual window size depends on variable availability).
+**gap**: 20 hours.
+**prediction window**: 64 hours.
+
 <img src="https://raw.githubusercontent.com/JimSmit/COVID-19_Prediction/main/images/windows.png" width="500">
 
-About these windows, the authors write the following:
+About these sizes, the authors write the following:
 
-"For pragmatic reasons, we defined near- term outcomes as those occurring between 20 and 84 hours from the prediction time. Approximately a day (20 hours) would allow time for providers for manual assessment by clinicians, trying interventions to prevent further deterioration and for performing the goals- of- care and/or palliative care consultations to develop an indi- vidualised plan of care after their clinical assessment. The 3 days horizon (72 hours) was extended by 12 hours for operational reasons of accommodating a complete day at a hospital until evening."
+"For pragmatic reasons, we defined near- term outcomes as those occurring between 20 and 84 hours from the prediction time. Approximately a day (20 hours) would **allow time for providers for manual assessment by clinicians, trying interventions to prevent further deterioration and for performing the goals- of- care and/or palliative care consultations to develop an indi- vidualised plan of care after their clinical assessment**. The 3 days horizon (72 hours) was extended by 12 hours for **operational reasons of accommodating a complete day at a hospital until evening**."
 
 Furthermore, the authors write the following about their labeling srategy:
 
-"The interval between the time of discharge and the time of generating each feature vector was generated daily for each patient. If the discharge disposition was ‘Expired (ie, dead)’ and the interval was between 20 and 84 hours, we labelled the feature vectors as positive. If the discharge disposition was ‘Not Expired’ and the interval was between 20 and 84 hours, we labelled the feature vectors negative. We excluded the remaining feature vectors from our cohort."
+"The interval between the time of discharge and the time of generating each feature vector was generated daily for each patient. If the discharge disposition was ‘Expired (ie, dead)’ and the interval was between 20 and 84 hours, we labelled the feature vectors as positive. If the discharge disposition was ‘Not Expired’ and the interval was between 20 and 84 hours, we labelled the feature vectors negative. **We excluded the remaining feature vectors from our cohort."**
 
-Thus, feature vectors were sampled daily between 20 and 84 hours before the moment of discharge. If a patient was dead at moment of discharge, the feature vector was labeled poitive, and negative otherwise. 
+Thus, feature vectors were sampled daily between 20 and 84 hours before the moment of discharge. If a patient was dead at moment of discharge, the feature vector was labeled poitive, and negative otherwise. And **no** feature vectors were kept which were sampled **outside** this 20-84 hours interval before discharge.
 
 Below is a schematic overview of this sampling strategy:
 
