@@ -88,7 +88,7 @@ class Parchure:
         
     
     def Prepare(self,random_state):
-
+        print('start preparing dataframes')
         self.df_train,self.df_val,self.df_test, self.df_demo_train,self.df_demo_val,self.df_demo_test = df_preparer(self.df,self.features,
                                                                             self.ids_IC_only,self.ids_events,
                                                                             random_state,self.specs) 
