@@ -30,7 +30,7 @@ def importer_cci(file):
     
     return df
 
-def importer_pacmed(features):
+def importer_pacmed(features,specs):
     from data_warehouse_utils.dataloader import DataLoader
     dl = DataLoader()
 
@@ -42,7 +42,7 @@ def importer_pacmed(features):
     B = dl.get_single_timestamp(
                                 parameters=features,
     #                             hospitals = ['franciscus']
-                                columns = list(['hash_patient_id','pacmed_name','effective_timestamp','numerical_value','is_correct_unit_yn'])
+                                columns = list(['hash_patient_id','pacmed_name','effective_timestamp','numerical_value','is_correct_unit_yn','unit_name'])
                                )
 
     # filter those with double episodes    
@@ -118,6 +118,78 @@ def importer_pacmed(features):
     B = B[~mask]
     print('After removing unavailable dates:',B.shape)
     
+    # ---- Make Unit dictionary ---------
+    units_vitals = list(['[%]','[bpm]','[mmHg]','[/min]','[°C]'])
+    units = []
+    all_units = list(features)
+    
+    for i in all_units:
+        snip = B[B['pacmed_name']==i].reset_index(drop=True)['unit_name'].dropna()
+        if snip.shape[0] > 0:
+            units.append('[' + snip[0] + ']')
+        else:
+            units.append(' ')
+    
+    dict_units = dict(zip(all_units, units))
+    
+    all_units = np.asarray(all_units)
+    
+    if specs['freq']:
+        new_features = []
+        for i in all_units:
+            new_features.append(i+str('_freq'))
+        dict_units.update(dict(zip(new_features, list(['[/h]'])*len(new_features))))    
+        
+        new_features = []
+        for i in ['SpO2','HR','BP','RR','Temp']:
+            new_features.append(i+str('_freq'))
+        dict_units.update(dict(zip(new_features, list(['[/h]'])*len(new_features))))    
+        
+            
+    if specs['inter']:
+        new_features = []
+        for i in all_units:
+            new_features.append(i+str('_inter'))
+        dict_units.update(dict(zip(new_features, list(['[hrs]'])*len(new_features))))    
+        
+        new_features = []
+        for i in ['SpO2','HR','BP','RR','Temp']:
+            new_features.append(i+str('_inter'))
+        dict_units.update(dict(zip(new_features, list(['[hrs]'])*len(new_features))))    
+        
+    if specs['diff']:
+        new_features = []
+        for i in all_units:
+            new_features.append(i+str('_diff'))
+        dict_units.update(dict(zip(new_features, units)))    
+        
+        new_features = []
+        for i in ['SpO2','HR','BP','RR','Temp']:
+            new_features.append(i+str('_diff'))
+        dict_units.update(dict(zip(new_features, units_vitals)))    
+        
+    if specs['stats']:
+        
+        stats = ['_max','_min','_mean','_median','_std','_diff_std']
+        for stat in stats:
+            new_features = []
+            for i in ['SpO2','HR','BP','RR']:
+                new_features.append(i+stat)
+                dict_units.update(dict(zip(new_features, units_vitals[:-1])))    
+    
+    # default_data.update({'item3': 3})
+    
+    dict_units.update({'BMI':''})
+    dict_units.update({'AGE':'[yrs]'})
+    dict_units.update({'SEX':'[yrs]'})
+    dict_units.update({'SpO2':'[%]'})
+    dict_units.update({'HR':'[bpm]'})
+    dict_units.update({'BP':'[mmHg]'})
+    dict_units.update({'RR':'[/min]'})
+    dict_units.update({'Temp':'[°C]'})
+    dict_units.update({'LOS':'[hrs]'})
+    
+    
     # get rid of non-informative columns, transform datatypes
     B = B[['hash_patient_id','pacmed_name','effective_timestamp','numerical_value']]
     type_lib = {
@@ -167,7 +239,10 @@ def importer_pacmed(features):
     assert len(np.unique(B_full.ID)) == len(np.unique(full.ID))
     print(B_full.info())
     
-    return B_full, full
+    
+    
+    
+    return B_full, full,dict_units
     
 def importer_labs(file,encoding,sep,header,specs,labs=True,filter=True,nrows=None,skiprows=None,skipinitialspace=False):
     """Import labs data.
@@ -1167,7 +1242,7 @@ def df_preparer(df,variables,ids_ICU_only,ids_events,random_state,specs,norm=Tru
 
 def Prepare_imputation_vectors(df_demo_train,df_train,features):
     #make median demo vector
-    df_demo_train = df_demo_train[['AGE','BMI']]
+    df_demo_train = df_demo_train[['BMI','AGE']]
     df_demo_train = df_demo_train.dropna()
     
     demo_median = np.asarray(df_demo_train.median())
