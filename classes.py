@@ -313,22 +313,22 @@ class Parchure:
         
         
         
-        # # First only LOS
-        # features =  ['BMI',' AGE']
-        # LOS = X_val[:,:2]
-        # shap_values = explainer.shap_values(X_val)
-        # shap_values = shap_values[1]
-        # shap_values = shap_values[:,:2]
-        # plt.figure()
-        # shap.summary_plot(shap_values, features=LOS, feature_names=features,plot_type='dot',show=False)
+        # First only LOS
+        features =  ['BMI',' AGE','LOS']
+        LOS = X_val[:,:3]
+        shap_values = explainer.shap_values(X_val)
+        shap_values = shap_values[1]
+        shap_values = shap_values[:,:3]
+        plt.figure()
+        shap.summary_plot(shap_values, features=LOS, feature_names=features,plot_type='dot',show=False)
         # Change the colormap of the artists
-        # for fc in plt.gcf().get_children():
-        #     for fcc in fc.get_children():
-        #         if hasattr(fcc, "set_cmap"):
-        #             fcc.set_cmap(newcmp)
+        for fc in plt.gcf().get_children():
+            for fcc in fc.get_children():
+                if hasattr(fcc, "set_cmap"):
+                    fcc.set_cmap(newcmp)
         
-        # plt.tight_layout()
-        # plt.savefig('results/Shap_summary_LOS.png',dpi=200)
+        plt.tight_layout()
+        plt.savefig('results/Shap_summary_LOS.png',dpi=200)
               
         # # Without LOS
         # rest = np.concatenate([X_val[:,:2],X_val[:,3:]],axis=1)

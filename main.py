@@ -24,7 +24,7 @@ from classes import *
 # inputs = ['Data_EMC/labs_up_to_date.csv','Data_EMC/20201102_covid data_metingen_alive.csv','Data_EMC/20201102_covid data_metingen_dead.csv']
 
 # inputs = ['D:/Data_EMC/20201116_covid_data_lab.csv','D:/Data_EMC/20201115_covid_data_metingen.csv']
-inputs = ['../Data_EMC/20201214_covid_data_lab.csv','../Data_EMC/20201214_covid_data_metingen.csv','../Data_EMC/pirate.xlsx']
+inputs = ['../../Data_EMC/20201214_covid_data_lab.csv','../../Data_EMC/20201214_covid_data_metingen.csv','../../Data_EMC/pirate.xlsx']
 # inputs = ['../Data_EMC/20201130_covid_data_lab.csv','../Data_EMC/20201123_covid data_metingen.csv','../Data_EMC/pirate.xlsx']
 encoders = ['utf-8',"ISO-8859-1",'ascii']
 
@@ -33,7 +33,7 @@ pred_window = 24
 gap = 0
 feature_window = 1
 label_type = 'ICU'
-model = 'XGB'
+model = 'RF'
 knn = 2
 n_trees = 500
 recall_threshold = 0.8
@@ -42,10 +42,10 @@ FS = False
 
 
 # prints
-prints_to_text = False
-save_model= False
+prints_to_text = True
+save_model= True
 
-k = 1
+k = 10
 
 # Input characteristics
 n_features = 20
@@ -147,11 +147,6 @@ parchure.merge()    #feature selection in this func
 
 #%%
 
-parchure.Prepare(random.randint(0, 10000))
-_, _ = parchure.Build_feature_vectors(1,str(model)+'_'+str(n_features)) 
-top_idx = parchure.feature_selection(50)
-   
-
 
 from sklearn.metrics import precision_recall_curve
 from sklearn.metrics import average_precision_score
@@ -183,6 +178,9 @@ for i in range(k):
     # ----- Build feature vectors -----
     imputer, imputer_raw = parchure.Build_feature_vectors(i,str(model)+'_'+str(n_features)) 
     
+    if i == 0:
+        top_idx = parchure.feature_selection(50)
+       
     # --------- optimize weight for minority class ------
     t = parchure.Optimize_weights()
     
@@ -270,7 +268,6 @@ if save_model:
     pd.DataFrame(df_demo_val_raw_best).to_csv('saved_model/df_demo_val_raw_best.csv')
     pd.DataFrame(demo_median_raw_best).to_csv('saved_model/demo_median_raw_best.csv')
     
-    pd.DataFrame(top_idx).to_csv('FS_idxs.csv')
 
 aps_NEWS = np.asarray(aps_NEWS)
 aps_model = np.asarray(aps_model)
@@ -430,63 +427,63 @@ print('idxs for fetaures to keep:',top_idx)
 #%% load data
 
 
-#Saved direcertory
-d = 'saved_model_08_01'
+# #Saved direcertory
+# d = 'saved_model_08_01'
 
-import pickle
-with open(d+'/trained_model.sav', 'rb') as file:
-    clf_best = pickle.load(file)
-with open(d +'/explainer_best.sav', 'rb') as file:
-    explainer_best = pickle.load(file)
+# import pickle
+# with open(d+'/trained_model.sav', 'rb') as file:
+#     clf_best = pickle.load(file)
+# with open(d +'/explainer_best.sav', 'rb') as file:
+#     explainer_best = pickle.load(file)
 
-with open(d +'/imputer_best.sav', 'rb') as file:
-    imputer_best = pickle.load(file)
-with open(d +'/imputer_raw_best.sav', 'rb') as file:
-    imputer_raw_best = pickle.load(file)
+# with open(d +'/imputer_best.sav', 'rb') as file:
+#     imputer_best = pickle.load(file)
+# with open(d +'/imputer_raw_best.sav', 'rb') as file:
+#     imputer_raw_best = pickle.load(file)
 
-type_lib = {'ID':str,
-                'VARIABLE':str,
-                'TIME': str,
-                'VALUE': float,
-                'DEPARTMENT':str,
-                'AGE':float,
-                'BMI':float,
+# type_lib = {'ID':str,
+#                 'VARIABLE':str,
+#                 'TIME': str,
+#                 'VALUE': float,
+#                 'DEPARTMENT':str,
+#                 'AGE':float,
+#                 'BMI':float,
                 
-                }
+#                 }
 
 
-df_val_best = pd.read_csv(d+'/df_val_best.csv',index_col=False,dtype = type_lib)
-df_val_best = df_val_best.drop(df_val_best.columns[0], axis=1)
+# df_val_best = pd.read_csv(d+'/df_val_best.csv',index_col=False,dtype = type_lib)
+# df_val_best = df_val_best.drop(df_val_best.columns[0], axis=1)
 
-median_best = pd.read_csv(d +'/median_best.csv',index_col=False,dtype = type_lib)
-median_best = median_best.drop(median_best.columns[0], axis=1)
-median_best = np.asarray(median_best)
+# median_best = pd.read_csv(d +'/median_best.csv',index_col=False,dtype = type_lib)
+# median_best = median_best.drop(median_best.columns[0], axis=1)
+# median_best = np.asarray(median_best)
 
-df_demo_val_best = pd.read_csv(d +'/df_demo_val_best.csv',index_col=False,dtype = type_lib)
-df_demo_val_best = df_demo_val_best.drop(df_demo_val_best.columns[0], axis=1)
+# df_demo_val_best = pd.read_csv(d +'/df_demo_val_best.csv',index_col=False,dtype = type_lib)
+# df_demo_val_best = df_demo_val_best.drop(df_demo_val_best.columns[0], axis=1)
 
-demo_median_best = pd.read_csv(d +'/demo_median_best.csv',index_col=False,dtype = type_lib)
-demo_median_best = demo_median_best.drop(demo_median_best.columns[0], axis=1)
-demo_median_best = np.asarray(demo_median_best)
+# demo_median_best = pd.read_csv(d +'/demo_median_best.csv',index_col=False,dtype = type_lib)
+# demo_median_best = demo_median_best.drop(demo_median_best.columns[0], axis=1)
+# demo_median_best = np.asarray(demo_median_best)
 
-df_val_raw_best = pd.read_csv(d +'/df_val_raw_best.csv',index_col=False,dtype = type_lib)
-df_val_raw_best = df_val_raw_best.drop(df_val_raw_best.columns[0], axis=1)
+# df_val_raw_best = pd.read_csv(d +'/df_val_raw_best.csv',index_col=False,dtype = type_lib)
+# df_val_raw_best = df_val_raw_best.drop(df_val_raw_best.columns[0], axis=1)
 
-median_raw_best = pd.read_csv(d +'/median_raw_best.csv',index_col=False,dtype = type_lib)
-median_raw_best = median_raw_best.drop(median_raw_best.columns[0], axis=1)
-median_raw_best = np.asarray(median_raw_best)
+# median_raw_best = pd.read_csv(d +'/median_raw_best.csv',index_col=False,dtype = type_lib)
+# median_raw_best = median_raw_best.drop(median_raw_best.columns[0], axis=1)
+# median_raw_best = np.asarray(median_raw_best)
 
-df_demo_val_raw_best = pd.read_csv(d +'/df_demo_val_raw_best.csv',index_col=False,dtype = type_lib)
-df_demo_val_raw_best = df_demo_val_raw_best.drop(df_demo_val_raw_best.columns[0], axis=1)
+# df_demo_val_raw_best = pd.read_csv(d +'/df_demo_val_raw_best.csv',index_col=False,dtype = type_lib)
+# df_demo_val_raw_best = df_demo_val_raw_best.drop(df_demo_val_raw_best.columns[0], axis=1)
 
-demo_median_raw_best = pd.read_csv(d +'/demo_median_raw_best.csv',index_col=False,dtype = type_lib)
-demo_median_raw_best = demo_median_raw_best.drop(demo_median_raw_best.columns[0], axis=1)
-demo_median_raw_best = np.asarray(demo_median_raw_best)
+# demo_median_raw_best = pd.read_csv(d +'/demo_median_raw_best.csv',index_col=False,dtype = type_lib)
+# demo_median_raw_best = demo_median_raw_best.drop(demo_median_raw_best.columns[0], axis=1)
+# demo_median_raw_best = np.asarray(demo_median_raw_best)
 
-date_format='%Y-%m-%d %H:%M:%S'
+# date_format='%Y-%m-%d %H:%M:%S'
 
-df_val_best['TIME'] = pd.to_datetime(df_val_best['TIME'],format = date_format)
-df_val_raw_best['TIME'] = pd.to_datetime(df_val_raw_best['TIME'],format = date_format)
+# df_val_best['TIME'] = pd.to_datetime(df_val_best['TIME'],format = date_format)
+# df_val_raw_best['TIME'] = pd.to_datetime(df_val_raw_best['TIME'],format = date_format)
 
 
 
@@ -495,7 +492,6 @@ df_val_raw_best['TIME'] = pd.to_datetime(df_val_raw_best['TIME'],format = date_f
 from functions import *
 from classes import *
 
-t_best = 0.004
 
 X_val_pos = parchure.Proof_of_concept(clf_best,explainer_best,imputer_best,imputer_raw_best,
                                         df_val_best,median_best,df_demo_val_best,demo_median_best,
@@ -511,15 +507,15 @@ X_val_tot = np.concatenate([X_val_pos,X_val_neg],axis=0)
 
 parchure.Global_Feature_importance(X_val_tot,explainer_best,clf_best)
 
-X_val_pos = parchure.Proof_of_concept(clf_best,explainer_best,imputer_best,imputer_raw_best,
-                                        df_val_best,median_best,df_demo_val_best,demo_median_best,
-                                        df_val_raw_best,median_raw_best,df_demo_val_raw_best,demo_median_raw_best,
-                                        t_best,1,'pos',plot=True)
+# X_val_pos = parchure.Proof_of_concept(clf_best,explainer_best,imputer_best,imputer_raw_best,
+#                                         df_val_best,median_best,df_demo_val_best,demo_median_best,
+#                                         df_val_raw_best,median_raw_best,df_demo_val_raw_best,demo_median_raw_best,
+#                                         t_best,1,'pos',plot=True)
 
-X_val_neg = parchure.Proof_of_concept(clf_best,explainer_best,imputer_best,imputer_raw_best,
-                                        df_val_best,median_best,df_demo_val_best,demo_median_best,
-                                        df_val_raw_best,median_raw_best,df_demo_val_raw_best,demo_median_raw_best,
-                                        t_best,1,'neg',plot=True)
+# X_val_neg = parchure.Proof_of_concept(clf_best,explainer_best,imputer_best,imputer_raw_best,
+#                                         df_val_best,median_best,df_demo_val_best,demo_median_best,
+#                                         df_val_raw_best,median_raw_best,df_demo_val_raw_best,demo_median_raw_best,
+#                                         t_best,1,'neg',plot=True)
 
 #%% Nested CV
 

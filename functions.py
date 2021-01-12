@@ -1075,9 +1075,21 @@ def df_preparer(df,variables,ids_ICU_only,ids_events,random_state,specs,norm=Tru
     df_demo['BMI'] = bmi
     df_demo['AGE'] = age
     
+    # Outlier detection BMI and Age
+    bmi = df_demo['BMI']
+    m_bmi = np.mean(bmi[~bmi.isnull()])
+    s_bmi = np.std(bmi[~bmi.isnull()])
+    print(m_bmi-3*s_bmi,m_bmi+3*s_bmi)
     
+    df_demo.loc[(df_demo['BMI'] < (m_bmi - 3*s_bmi)) | (df_demo['BMI'] > (m_bmi + 3*s_bmi)), 'BMI'] = np.nan
     
-    # # Make figure of demographics transfer group vs non-transfer
+    age = df_demo['AGE']
+    m_age = np.mean(age[~age.isnull()])
+    s_age = np.std(age[~age.isnull()])
+    df_demo.loc[(df_demo['AGE'] < m_age - 3*s_age) | (df_demo['AGE'] > m_age + 3*s_age), 'AGE'] = np.nan
+    print(m_age-3*s_age,m_age+3*s_age)
+    
+    # Make figure of demographics transfer group vs non-transfer
     # df_demo_plot = df_demo.copy()
     # df_demo_plot['label'] = 'no transfer'
     # mask = df_demo_plot['ID'].isin(ids_events)
@@ -1086,6 +1098,7 @@ def df_preparer(df,variables,ids_ICU_only,ids_events,random_state,specs,norm=Tru
     # df_1 = df_demo_plot[['BMI','label']]
     # df_1.columns = ['Value','label']
     # df_1['feature'] = 'BMI'
+    
     # df_2 = df_demo_plot[['AGE','label']]
     # df_2.columns = ['Value','label']
     # df_2['feature'] = 'AGE [yrs]'
@@ -1564,7 +1577,8 @@ def create_feature_window(df,median,df_demo,demo_median,variables,los,specs):
     
     for i in range(len(df_demo)):
         if np.isnan(df_demo[i]):
-            v.extend(demo_median[i]*np.ones(1))
+            v.extend(np.nan*np.ones(1))
+            # v.extend(demo_median[i]*np.ones(1))
             med_imp +=1
             med_spec.append(1)
             ff_spec.append(0)
