@@ -38,7 +38,7 @@ knn = 2
 n_trees = 500
 recall_threshold = 0.8
 FS = False
-
+n_keep = 50
 
 
 # prints
@@ -179,7 +179,7 @@ for i in range(k):
     imputer, imputer_raw = parchure.Build_feature_vectors(i,str(model)+'_'+str(n_features)) 
     
     if i == 0:
-        top_idx = parchure.feature_selection(50)
+        selector = parchure.feature_selection(n_keep)
        
     # --------- optimize weight for minority class ------
     t = parchure.Optimize_weights()
@@ -257,6 +257,10 @@ if save_model:
     
     filename = 'saved_model/imputer_raw_best.sav'
     pickle.dump(imputer_raw_best, open(filename, 'wb'))
+    
+    if FS:
+        filename = 'saved_model/selector.sav'
+        pickle.dump(selector, open(filename, 'wb'))
     
     pd.DataFrame(df_val_best).to_csv('saved_model/df_val_best.csv')
     pd.DataFrame(median_best).to_csv('saved_model/median_best.csv')

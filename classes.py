@@ -163,23 +163,34 @@ class Parchure:
         n_trees = optimize_n_trees(self.X_train,self.y_train)
         
     def feature_selection(self,n):
-        top_idx = 0
-        
+        print('feature selection triggered')
         self.total_features = make_total_features(self.features,self.specs)
         print(self.X_train.shape)
+        print(self.total_features.shape)
+        
+        top_idx = 0
+        self.selector = None
         
         if self.specs['FS']:
             print('Perform Feature selection, keep only top',n)
-            clf,_,_,_,_,_,_ = train_model(self.X_train,self.y_train,self.X_test,self.y_test,self.specs['model'],n_trees=self.specs['n_trees'],class_weight={0:1,1:15})
+            from sklearn.feature_selection import SelectKBest, chi2, f_classif
+            self.selector = SelectKBest(f_classif, k=n).fit(self.X_train, self.y_train)
+            
+            self.X_train = self.selector.transform(self.X_train)
+            self.X_val = self.selector.transform(self.X_val)
+            self.X_test = self.selector.transform(self.X_test)
+            
+            mask = self.selector.get_support() #list of booleans
+            new_features = [] # The list of your K best features
+            for bool, feature in zip(mask, self.features):
+                if bool:
+                    new_features.append(feature)
             
             
-            sorted_idx = clf.feature_importances_.argsort()
-            top_idx = sorted_idx[-n:]
-            print('idxs to keep:',top_idx)
-            self.top_idx = top_idx
-            self.total_features = total_features[top_idx]
+            self.total_features = np.asarray(new_features)
             print(self.total_features[-15:])
-        return top_idx
+            
+        return self.selector
         
         
         
@@ -203,10 +214,8 @@ class Parchure:
         t_best = 0        
         for w,k in zip(weights,'bgrcmykw'):
             print('working on class weight:',w)
-            if self.specs['FS']:
-                clf,train_auc,explainer,p,r,ap,t = train_model(self.X_train[:,self.top_idx],self.y_train,self.X_test[:,self.top_idx],self.y_test,self.specs['model'],n_trees=self.specs['n_trees'],class_weight={0:1,1:w})
-            else:
-                clf,train_auc,explainer,p,r,ap,t = train_model(self.X_train,self.y_train,self.X_test,self.y_test,self.specs['model'],n_trees=self.specs['n_trees'],class_weight={0:1,1:w})
+  
+            clf,train_auc,explainer,p,r,ap,t = train_model(self.X_train,self.y_train,self.X_test,self.y_test,self.specs['model'],n_trees=self.specs['n_trees'],class_weight={0:1,1:w})
                 
             ax.plot(r,p,c=k,label=w)
             if ap > best_ap:
@@ -228,10 +237,8 @@ class Parchure:
         from sklearn import metrics
         
         # MODEL
-        if self.specs['FS']:
-            predictions = self.clf.predict_proba(self.X_val[:,self.top_idx])[:,1]
-        else:
-            predictions = self.clf.predict_proba(self.X_val)[:,1]
+
+        predictions = self.clf.predict_proba(self.X_val)[:,1]
             
         precision, recall, _ = precision_recall_curve(self.y_val, predictions)
         fpr, tpr, _ = metrics.roc_curve(self.y_val, predictions)
