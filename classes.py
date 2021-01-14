@@ -176,9 +176,7 @@ class Parchure:
             from sklearn.feature_selection import SelectKBest, chi2, f_classif
             self.selector = SelectKBest(f_classif, k=n).fit(self.X_train, self.y_train)
             
-            self.X_train = self.selector.transform(self.X_train)
-            self.X_val = self.selector.transform(self.X_val)
-            self.X_test = self.selector.transform(self.X_test)
+            
             
             mask = self.selector.get_support() #list of booleans
             new_features = [] # The list of your K best features
@@ -197,7 +195,12 @@ class Parchure:
     def Optimize_weights(self):
         print('start optimizing weights')
         import matplotlib.pyplot as plt
-               
+        
+        
+        if self.specs['FS']:
+            self.X_train = self.selector.transform(self.X_train)
+            self.X_val = self.selector.transform(self.X_val)
+            self.X_test = self.selector.transform(self.X_test)
         
         fig = plt.figure(figsize=(15,8))
         ax = fig.add_subplot(1,1,1)
@@ -257,7 +260,7 @@ class Parchure:
         yhat = model.predict_proba(self.X_val)
         naive_probs = yhat[:, 1]
         
-        return self.clf,self.explainer,self.df_val,self.median,self.df_demo_val,self.demo_median,self.df_val_raw,self.median_raw,self.df_demo_val_raw,self.demo_median_raw,precision,recall,ap,fpr,tpr,auc,self.y_val,predictions,precision_n,recall_n,fpr_n,ap_n,auc_n,X_val,naive_probs
+        return self.clf,self.explainer,self.df_val,self.median,self.df_demo_val,self.demo_median,self.df_val_raw,self.median_raw,self.df_demo_val_raw,self.demo_median_raw,precision,recall,ap,fpr,tpr,auc,self.y_val,predictions,precision_n,recall_n,fpr_n,ap_n,auc_n,X_val,naive_probs,self.X_val
     
         
     def Evaluate(self,beta):

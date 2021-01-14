@@ -185,7 +185,7 @@ for i in range(k):
     t = parchure.Optimize_weights()
     
     # ---- Get stats for this fold -------
-    clf, explainer,df_val,median,df_demo_val,demo_median,df_val_raw,median_raw,df_demo_val_raw,demo_median_raw,precision,recall,ap,fpr,tpr,auc,ytest,pred,precision_n,recall_n,fpr_n,ap_n,auc_n,X,pred_na = parchure.Predict()
+    clf, explainer,df_val,median,df_demo_val,demo_median,df_val_raw,median_raw,df_demo_val_raw,demo_median_raw,precision,recall,ap,fpr,tpr,auc,ytest,pred,precision_n,recall_n,fpr_n,ap_n,auc_n,X,pred_na,X_val = parchure.Predict()
     aps_NEWS.append(ap_n)
     aps_model.append(ap)
     aucs_NEWS.append(auc_n)
@@ -206,6 +206,8 @@ for i in range(k):
         median_raw_best = median_raw
         df_demo_val_raw_best = df_demo_val_raw
         demo_median_raw_best = demo_median_raw
+        
+        X_val_best = X_val
         
         imputer_best = imputer
         imputer_raw_best = imputer_raw
@@ -271,7 +273,7 @@ if save_model:
     pd.DataFrame(median_raw_best).to_csv('saved_model/median_raw_best.csv')
     pd.DataFrame(df_demo_val_raw_best).to_csv('saved_model/df_demo_val_raw_best.csv')
     pd.DataFrame(demo_median_raw_best).to_csv('saved_model/demo_median_raw_best.csv')
-    
+    pd.DataFrame(X_val_best).to_csv('saved_model/X_val_best.csv')
 
 aps_NEWS = np.asarray(aps_NEWS)
 aps_model = np.asarray(aps_model)

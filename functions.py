@@ -2567,3 +2567,26 @@ def make_total_features(features,specs):
     total_features = np.asarray(total_features)
     print(total_features.shape)
     return total_features    
+
+def Utility_score(y_pred,y_true,y_t,specs):
+    
+    """
+    Make Utilty score
+    """
+    U = 0 # TN
+    
+    U_TP = np.concatenate([np.linspace(0.1,1,specs['pred_window']-1),np.linspace(1,0.5,specs['gap'])],axis=0)
+    U_FN = np.linspace(0,-2,specs['pred_window']+specs['gap'])
+    
+    if y_true == 0:
+        if y_pred == 1: # FP
+            U = -0.1
+    
+    if y_true == 1:
+        if y_pred == 1: # TP
+            U = U_TP[-y_t]
+        elif y_pred == 0: # FN
+            U = U_FN[-y_t]
+    return U
+    
+    
