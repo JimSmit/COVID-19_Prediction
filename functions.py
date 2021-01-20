@@ -1317,11 +1317,7 @@ def prepare_feature_vectors(df,median,df_demo,demo_median,df_episodes,ids_events
     neg = list() #create empty list for neg labeled feature vectors
     y_pat = list()
     
-    med_shares = []
-    ff_shares = []
-    
-    med_shares_spec = []
-    ff_shares_spec = []
+    entry_dens_full = list()
     
       
         
@@ -1370,6 +1366,8 @@ def prepare_feature_vectors(df,median,df_demo,demo_median,df_episodes,ids_events
         patient = patient[patient[:,2].argsort()]
         demo = df_demo[np.where(df_demo[:,0]==idx)][:,1:][0]
         
+        entry_dens_patient = list()
+        
         if specs['label_type'] == 'ICU':
             t_event = patient[np.where(patient[:,4]=='IC')][0,2]# define moment of ICU admission as first ICU measurement
          
@@ -1391,7 +1389,9 @@ def prepare_feature_vectors(df,median,df_demo,demo_median,df_episodes,ids_events
                 ts.append(t)
                 t = t - timedelta(hours=specs['int_pos'])
 
-            
+            if len(ts) < 1:
+                print('pos patient',idx,'too short stay for pos samples')
+                
             if los < 0:
                     print(type(t_event))
                     print('wrong')
@@ -1404,15 +1404,11 @@ def prepare_feature_vectors(df,median,df_demo,demo_median,df_episodes,ids_events
                                     
                 temp = patient[np.where(patient[:,2]<t)]
                 
-                v,med_share,ff_share,med_spec,ff_spec = create_feature_window(temp,median,demo,demo_median,features,los,specs)
+                v,entry_dens = create_feature_window(temp,median,demo,demo_median,features,los,specs)
                 pos.append(v) # add feature vector to 'pos' list
                 y_pat.append(1) # add patient label
                 
-                
-                med_shares.append(med_share)
-                ff_shares.append(ff_share)
-                med_shares_spec.append(med_spec)
-                ff_shares_spec.append(ff_spec)
+                entry_dens_patient.append(entry_dens)
                 
                 # if (count_day*int_pos)%24 == 0:
                 los -= specs['int_pos']
@@ -1429,7 +1425,11 @@ def prepare_feature_vectors(df,median,df_demo,demo_median,df_episodes,ids_events
             for i in range(int(window/specs['int_neg'])): # Make array with timestamps to sample from, making steps of size 'int_neg'
                 ts.append(t)
                 t = t - timedelta(hours=specs['int_neg'])
-                        
+            
+                
+            if len(ts) < 1:
+                print('pos patient',idx,'too short stay for neg samples')
+                
             if los < 0:
                     print('wrong')
                     print('To ICU:',t_event)
@@ -1443,21 +1443,21 @@ def prepare_feature_vectors(df,median,df_demo,demo_median,df_episodes,ids_events
                 temp = patient[np.where(patient[:,2]<t)]
                 
                 
-                v,med_share,ff_share,med_spec,ff_spec = create_feature_window(temp,median,demo,demo_median,features,los,specs)
+                v,entry_dens = create_feature_window(temp,median,demo,demo_median,features,los,specs)
                 neg.append(v)# add feature vector to 'neg' list
                 y_pat.append(1) # add patient label
                 
-                med_shares.append(med_share)
-                ff_shares.append(ff_share)
-                ff_shares.append(ff_share)
-                med_shares_spec.append(med_spec)
-                ff_shares_spec.append(ff_spec)
+                entry_dens_patient.append(entry_dens)
                 
                 # if (count_day*int_neg)%24 == 0:
                 los -= specs['int_neg']
                 los = np.round(los,0)
                 # count_day += 1
-                
+         
+        if np.array(entry_dens_patient).shape[0] > 0:
+            entry_dens_patient = list(np.array(entry_dens_patient).mean(axis=0))
+            entry_dens_full.append(entry_dens_patient)
+            
     print('-----Sampling for negative patient-----')
     
     for idx in np.unique(df_neg[:,0]): # loop over patients
@@ -1465,6 +1465,9 @@ def prepare_feature_vectors(df,median,df_demo,demo_median,df_episodes,ids_events
         patient = patient[patient[:,2].argsort()]
         demo = df_demo[np.where(df_demo[:,0]==idx)][:,1:][0]
         t_event = patient[-1,2]
+        
+        entry_dens_patient = list()
+        
         if (patient[-1,2] - patient[0,2]).total_seconds() / 3600.0 < specs['gap']: # cannot label patients with stay shorter than the gap
             count+= 1
 
@@ -1477,6 +1480,9 @@ def prepare_feature_vectors(df,median,df_demo,demo_median,df_episodes,ids_events
             for i in range(int(window/specs['int_neg'])): # Make array with timestamps to sample from, making steps of size 'int_neg'
                 ts.append(t)
                 t = t - timedelta(hours=specs['int_neg'])
+            
+            if len(ts) < 1:
+                print('neg patient',idx,'too short stay for any samples')
                 
             if los < 0:
                     print('wrong')
@@ -1489,22 +1495,21 @@ def prepare_feature_vectors(df,median,df_demo,demo_median,df_episodes,ids_events
                 
                 temp = patient[np.where(patient[:,2]<t)]
                 
-                v,med_share,ff_share,med_spec,ff_spec = create_feature_window(temp,median,demo,demo_median,features,los,specs)
+                v,entry_dens = create_feature_window(temp,median,demo,demo_median,features,los,specs)
                 neg.append(v)# add feature vector to 'neg' list
                 y_pat.append(0) # add patient label
                 
-                med_shares.append(med_share)
-                ff_shares.append(ff_share)
-                ff_shares.append(ff_share)
-                med_shares_spec.append(med_spec)
-                ff_shares_spec.append(ff_spec)
+                entry_dens_patient.append(entry_dens)
                 
                 # if (count_day*int_neg)%24 == 0:
                 los -= specs['int_neg']
                 los = np.round(los,0)
                 # count_day += 1
                 
-                
+        if np.array(entry_dens_patient).shape[0] > 0:
+            entry_dens_patient = list(np.array(entry_dens_patient).mean(axis=0))
+            entry_dens_full.append(entry_dens_patient)
+            
     print('number of patients with too little data for feature vector: ', count)            
     print(len(pos),len(neg))
     pos=np.array([np.array(x) for x in pos])
@@ -1517,13 +1522,9 @@ def prepare_feature_vectors(df,median,df_demo,demo_median,df_episodes,ids_events
     y = np.concatenate((np.ones(pos.shape[0]),np.zeros(neg.shape[0])),axis=0)
     assert(y.shape == y_pat.shape)
     
-    imputation = [np.mean(med_shares), np.mean(ff_shares), (1-(np.mean(med_shares)+np.mean(ff_shares)))]
-    feature_imputation = pd.DataFrame()
-    feature_imputation['0'] = pd.DataFrame(med_shares_spec).mean(axis=0)
-    feature_imputation['1'] = pd.DataFrame(ff_shares_spec).mean(axis=0)
+    entry_dens_full = np.array(entry_dens_full)
     
-    # print(feature_imputation)
-    feature_imputation['2'] = np.ones(feature_imputation.shape[0])-feature_imputation['0']-feature_imputation['1'] 
+    
     # print(feature_imputation)
     print('X shape:',X.shape)
     # assert(np.isnan(X).any() == False)
@@ -1531,7 +1532,7 @@ def prepare_feature_vectors(df,median,df_demo,demo_median,df_episodes,ids_events
     print('y shape:',y.shape)
     assert(np.isnan(y).any() == False)
     
-    return X, y,imputation,feature_imputation,pos,y_pat             
+    return X, y,entry_dens_full,pos,y_pat             
         
 
     
@@ -1565,13 +1566,9 @@ def create_feature_window(df,median,df_demo,demo_median,variables,los,specs):
     from datetime import datetime, timedelta
     
     v = list() #define empty feature vector
+    entry_dens = list()
     
     n = specs['feature_window']
-    med_imp = 0 # define median imputation counter
-    ff = 0 # define feed_forward imputer counter
-    
-    med_spec = list()
-    ff_spec = list()
     
     # ------ Add demographics  ---------
     
@@ -1579,15 +1576,10 @@ def create_feature_window(df,median,df_demo,demo_median,variables,los,specs):
         if np.isnan(df_demo[i]):
             v.extend(np.nan*np.ones(1))
             # v.extend(demo_median[i]*np.ones(1))
-            med_imp +=1
-            med_spec.append(1)
-            ff_spec.append(0)
         else:
             
             v.extend(df_demo[i]*np.ones(1))
-            med_spec.append(0)
-            ff_spec.append(0)
-    
+        
     # -------- Add LOS ----------------
     if specs['time']:
         v.extend(np.ones(1)*los)
@@ -1601,30 +1593,21 @@ def create_feature_window(df,median,df_demo,demo_median,variables,los,specs):
         if temp.shape[0] < 1: # If snippet contains none for this feature
             a = np.ones(n)*median[count]
             v.extend(a)
-            med_imp += n
-            med_spec.append(1)
-            ff_spec.append(0)
+            entry_dens.append(0)
             
         elif temp.shape[0] < n: # If snippet contains less than n values for feature, impute with most recent value
             a = np.concatenate((temp[:,3], 
                                 np.ones(n-temp.shape[0])*temp[-1,3]), axis=None)
             v.extend(a)
-            ff += (n-temp.shape[0])
-            
-            med_spec.append(0)
-            ff_spec.append((n-temp.shape[0])/n)
+            entry_dens.append(1)
             
         else: #if snippet contains n or more values, take n most recent values
             a = temp[-n:,3]
-            v.extend(a)          
-            
-            med_spec.append(0)
-            ff_spec.append(0)
+            v.extend(a)        
+            entry_dens.append(1
+                              )
         count+=1
         
-    med_share = med_imp/len(v)
-    ff_share = ff/len(v)
-    
     # -------- Add info_missingness ----------------
     
     if specs['freq']: # variable frequency
@@ -1660,9 +1643,11 @@ def create_feature_window(df,median,df_demo,demo_median,variables,los,specs):
             # difference between current and previous measurement
             if temp.shape[0] >= 2:
                 a = np.ones(1)*(np.abs(temp[-1,3]-temp[-2,3]))
+                entry_dens.append(1)
             # less than 2 samples available?, no difference possible
             else:
                 a = np.ones(1)*np.nan
+                entry_dens.append(0)
             v.extend(a)
     
     # stats in X hour sliding window
@@ -1692,23 +1677,29 @@ def create_feature_window(df,median,df_demo,demo_median,variables,los,specs):
                 a = np.ones(1)*np.std(temp[:,3])
                 v.extend(a)
                 
+                entry_dens = entry_dens + list([1,1,1,1,1])
+                
             # less than 2 samples available?, no stats
             else:
                 a = np.ones(5)*np.nan
                 v.extend(a)
+                entry_dens = entry_dens + list([0,0,0,0,0])
             
             if temp.shape[0] >= 3:
                 t = temp[-1,2] - timedelta(hours=specs['sliding_window'])
                 temp = temp[np.where(temp[:,2]>t)]
-            
+                
                 # add diff_std
                 a = np.ones(1)*np.std(np.diff(temp[:,3]))
+                entry_dens.append(1)
             # less than 3 samples available?, no std of diffs
             else:
                 a = np.ones(1)*np.nan
+                entry_dens.append(0)
+                
             v.extend(a)
             
-    return v,med_share,ff_share,med_spec,ff_spec
+    return v,entry_dens
     
 def create_dynamics(df,features,los,specs):
     v = list() #define empty feature vector
@@ -2536,8 +2527,13 @@ def AP_manually(p,r):
         ap += (p[i]*(r[i]-r[i+1]))
     return ap
 
-def make_total_features(features,specs):
-    total_features = ['BMI','AGE','LOS']+list(features)
+def make_total_features(features,specs,demo=True):
+    
+    if demo:
+        total_features = ['BMI','AGE','LOS']+list(features)
+    else:
+        total_features = list(features)
+        
     if specs['freq']:
         new_features = []
         for i in features:

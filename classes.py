@@ -106,32 +106,61 @@ class Parchure:
         print('TRAINING DATA')
                    
 
-        self.X_train,self.y_train,imputation_train,feature_imputation,_,_ = prepare_feature_vectors(self.df_train, self.median , self.df_demo_train,self.demo_median,self.df_episodes,
+        self.X_train,self.y_train,entry_dens_train,_,_ = prepare_feature_vectors(self.df_train, self.median , self.df_demo_train,self.demo_median,self.df_episodes,
                                                                           self.ids_events,self.features,self.specs)
         
-        self.X_train_raw,_,_,_,_,_ = prepare_feature_vectors(self.df_train_raw, self.median_raw, self.df_demo_train_raw,self.demo_median_raw,self.df_episodes,
+        self.X_train_raw,_,_,_,_ = prepare_feature_vectors(self.df_train_raw, self.median_raw, self.df_demo_train_raw,self.demo_median_raw,self.df_episodes,
                                                                           self.ids_events,self.features,self.specs)
        
         
         print('VALIDATION DATA')
-        self.X_val,self.y_val,imputation_val,_,self.val_pos,self.y_pat = prepare_feature_vectors(self.df_val, self.median , self.df_demo_val,self.demo_median,self.df_episodes,
+        self.X_val,self.y_val,entry_dens_val,self.val_pos,self.y_pat = prepare_feature_vectors(self.df_val, self.median , self.df_demo_val,self.demo_median,self.df_episodes,
                                                                         self.ids_events,self.features,self.specs)
         
-        self.X_val_raw,_,_,_,_,_ = prepare_feature_vectors(self.df_val_raw, self.median_raw , self.df_demo_val_raw,self.demo_median_raw,self.df_episodes,
+        self.X_val_raw,_,_,_,_ = prepare_feature_vectors(self.df_val_raw, self.median_raw , self.df_demo_val_raw,self.demo_median_raw,self.df_episodes,
                                                                         self.ids_events,self.features,self.specs)
         
         print('TEST DATA')
-        self.X_test,self.y_test,imputation_test,_,_,_ = prepare_feature_vectors(self.df_test, self.median , self.df_demo_test,self.demo_median,self.df_episodes,
+        self.X_test,self.y_test,entry_dens_test,_,_ = prepare_feature_vectors(self.df_test, self.median , self.df_demo_test,self.demo_median,self.df_episodes,
                                                                         self.ids_events,self.features,self.specs)
         
-        self.X_test_raw,_,_,_,_,_ = prepare_feature_vectors(self.df_test_raw, self.median_raw , self.df_demo_test_raw,self.demo_median_raw,self.df_episodes,
+        self.X_test_raw,_,_,_,_ = prepare_feature_vectors(self.df_test_raw, self.median_raw , self.df_demo_test_raw,self.demo_median_raw,self.df_episodes,
                                                                         self.ids_events,self.features,self.specs)
         
         
-        if i == 1:
-            general_imputation = pd.DataFrame([imputation_train,imputation_val,imputation_test])
-            df = stacked_barchart(['train','val','test'],general_imputation,'general_imp_'+name)
-            df = stacked_barchart(['BMI','AGE']+list(self.features),feature_imputation,'feature_sepc_imp_'+name)
+        if i == 0:
+            
+            print('PLOT ENTRY DENSITIES')
+            entry_dens = pd.DataFrame(np.concatenate([entry_dens_train,entry_dens_val,entry_dens_test],axis=0))
+            
+            entry_dens.columns = make_total_features(self.features,self.specs,demo=False)
+            import matplotlib.pyplot as plt
+            import seaborn as sns
+            plt.figure()
+            ax = sns.boxplot(x="variable", y="value", data=pd.melt(entry_dens.iloc[:,:33]))
+            plt.setp(ax.get_xticklabels(), rotation=90)
+            plt.tight_layout()
+            plt.savefig(self.specs['save_results']+'/entry_density_raw',dpi=300)
+            
+            
+            plt.figure()
+            ax = sns.boxplot(x="variable", y="value", data=pd.melt(entry_dens.iloc[:,33:]))
+            plt.setp(ax.get_xticklabels(), rotation=90, fontsize=3)
+            plt.tight_layout()
+            plt.savefig(self.specs['save_results']+'/entry_density_rest',dpi=300)
+            
+          
+        if i == 0:
+            print('PLOT CDFS')
+            features = ['AGE','SEX','LOS'] + list(self.features)
+            
+            print(self.X_train_raw.shape)
+            print(self.X_val_raw.shape)
+            print(self.X_test_raw.shape)
+            
+            X_raw_tot = np.concatenate([self.X_train_raw,self.X_val_raw,self.X_test_raw],axis=0)
+            print('total X shape:',X_raw_tot.shape)
+            print('number of features:', len(features))
             
         self.X_train,self.X_train_raw,self.X_val,self.X_val_raw,self.X_test,self.X_test_raw,self.imputer,self.imputer_raw = KNN_imputer(self.X_train,self.X_train_raw,
                                                                                                           self.X_val,self.X_val_raw,

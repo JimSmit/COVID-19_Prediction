@@ -44,6 +44,7 @@ n_keep = 50
 # prints
 prints_to_text = True
 save_model= True
+save_results_dir = 'results_test'
 
 k = 10
 
@@ -75,7 +76,8 @@ specs = dict({'n_features':n_features,'pred_window':pred_window,'gap':gap,'featu
               'int_neg':int_neg,'int_pos':int_pos,'val_share':val_share,'test_share':test_share,
               'label_type':label_type,'model':model,'policy':policy,'freq':freq,'time':time,
               'inter':inter,'stats':stats,'diff':diff,'sliding_window':sliding_window,'n_demo':n_demo,
-              'balance':balance,'knn':knn,'n_trees':n_trees,'recall_threshold':recall_threshold,'FS':FS})
+              'balance':balance,'knn':knn,'n_trees':n_trees,'recall_threshold':recall_threshold,'FS':FS,
+             'save_results':save_results_dir})
 
 
 
