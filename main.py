@@ -24,7 +24,7 @@ from classes import *
 # inputs = ['Data_EMC/labs_up_to_date.csv','Data_EMC/20201102_covid data_metingen_alive.csv','Data_EMC/20201102_covid data_metingen_dead.csv']
 
 # inputs = ['D:/Data_EMC/20201116_covid_data_lab.csv','D:/Data_EMC/20201115_covid_data_metingen.csv']
-inputs = ['../../Data_EMC/20201214_covid_data_lab.csv','../../Data_EMC/20201214_covid_data_metingen.csv','../../Data_EMC/pirate.xlsx']
+inputs = ['../../Data_EMC/20210112_covid data_lab.csv','../../Data_EMC/20210111_covid data_metingen.xlsx','../../Data_EMC/pirate.xlsx']
 # inputs = ['../Data_EMC/20201130_covid_data_lab.csv','../Data_EMC/20201123_covid data_metingen.csv','../Data_EMC/pirate.xlsx']
 encoders = ['utf-8',"ISO-8859-1",'ascii']
 
@@ -62,9 +62,9 @@ test_share = 0.2
 
 # flags
 policy = True
-freq = True
+freq = False
 time=True
-inter = True
+inter = False
 stats = True
 diff = True
 sliding_window = 24
@@ -102,11 +102,121 @@ data, dict_unit = parchure.import_labs(inputs,encoders)  # EMC data
 parchure.clean_labs()
 parchure.import_vitals(inputs,encoders)
 parchure.clean_vitals()
-parchure.merge()    #feature selection in this func
+df,ids_events,ids_clinic = parchure.merge()    #feature selection in this func
 
 
 # parchure.Optimize_trees()
 
+
+
+#%%
+df_pos = pd.DataFrame()
+for i in ids_events:
+    ex = df[df['ID']==i].sort_values(by='TIME')
+    df_pos = pd.concat([df_pos,ex],axis=0)
+    
+
+df_neg = pd.DataFrame()
+for i in ids_clinic:
+    ex = df[df['ID']==i].sort_values(by='TIME')
+    df_neg = pd.concat([df_neg,ex],axis=0)
+    
+
+
+demo_pos = list()
+
+for i in np.unique(df_pos['ID']):
+    demo = list()
+    demo.append(i)
+    
+    ex = df_pos[df_pos['ID']==i]
+    
+    if ex['BMI'].dropna().shape[0]<1:
+        demo.append(np.nan)
+    else:
+        demo.append(np.round(float(ex['BMI'].dropna().min()),1))
+    
+    if ex['AGE'].dropna().shape[0]<1:
+        demo.append(np.nan)
+    else:
+        demo.append(int(ex['AGE'].dropna().min()))
+    
+    t_event = ex[ex['DEPARTMENT']=='IC']['START'].min()
+    demo.append(np.round((t_event-ex['TIME'].min()).total_seconds()/3600,0))
+    
+    demo_pos.append(demo)
+    
+demo_pos = pd.DataFrame(demo_pos,columns=['ID','BMI','AGE','LOS'])
+mask = demo_pos['LOS']<0
+demo_pos = demo_pos[~mask]
+
+def make_table(df):
+    ex = list()
+    ex.append(str(np.round(np.mean(df.AGE),1))+' ('+str(np.round(np.std(df.AGE),1))+')')
+    ex.append(str(np.round(np.median(df.dropna().AGE),1))+' ('+str(np.round(np.min(df.dropna().AGE),1))+','+str(np.round(np.max(df.dropna().AGE),1)) +')')
+    n = sum((df.AGE>=18) & (df.AGE<=45))
+    ex.append(str(n) + '('+ str(np.round(n/df.shape[0]*100,1))+ '%)')
+    n = sum((df.AGE>45) & (df.AGE<=65))
+    ex.append(str(n) + '('+ str(np.round(n/df.shape[0]*100,1))+ '%)')
+    n = sum((df.AGE>65) & (df.AGE<=80))
+    ex.append(str(n) + '('+ str(np.round(n/df.shape[0]*100,1))+ '%)')
+    n = sum((df.AGE>80))
+    ex.append(str(n) + '('+ str(np.round(n/df.shape[0]*100,1))+ '%)')
+    n = sum(df.AGE.isna())
+    ex.append(str(n) + '('+ str(np.round(n/df.shape[0]*100,1))+ '%)')
+    
+    ex.append(str(np.round(np.mean(df.dropna().BMI),1))+' ('+str(np.round(np.std(df.dropna().BMI),1))+')')
+    ex.append(str(np.round(np.median(df.dropna().BMI),1))+' ('+str(np.round(np.min(df.dropna().BMI),1))+','+str(np.round(np.max(df.dropna().BMI),1)) +')')
+    
+    n = sum((df.LOS<=24))
+    ex.append(str(n) + '('+ str(np.round(n/df.shape[0]*100,1))+ '%)')
+    n = sum((df.LOS>24) & (df.LOS<=72))
+    ex.append(str(n) + '('+ str(np.round(n/df.shape[0]*100,1))+ '%)')
+    n = sum((df.LOS>72) & (df.LOS<=240))
+    ex.append(str(n) + '('+ str(np.round(n/df.shape[0]*100,1))+ '%)')
+    n = sum((df.LOS>240))
+    ex.append(str(n) + '('+ str(np.round(n/df.shape[0]*100,1))+ '%)')
+        
+    return ex
+
+pos_ex = make_table(demo_pos)
+pos_ex = pd.DataFrame(pos_ex)
+pos_ex.to_excel('demo_pos.xlsx')
+
+demo_neg = list()
+
+for i in np.unique(df_neg['ID']):
+    demo = list()
+    demo.append(i)
+    
+    ex = df_neg[df_neg['ID']==i]
+    
+    if ex['BMI'].dropna().shape[0]<1:
+        demo.append(np.nan)
+    else:
+        demo.append(np.round(float(ex['BMI'].dropna().min()),1))
+    
+    if ex['AGE'].dropna().shape[0]<1:
+        demo.append(np.nan)
+    else:
+        demo.append(int(ex['AGE'].dropna().min()))
+    
+    if ex['DISCHARGE'].dropna().shape[0]<1:
+            demo.append(np.round((ex['TIME'].max()-ex['TIME'].min()).total_seconds()/3600,0))
+    else:
+        demo.append(np.round((ex['DISCHARGE'].min()-ex['TIME'].min()).total_seconds()/3600,0))
+    
+    demo_neg.append(demo)
+    
+demo_neg = pd.DataFrame(demo_neg,columns=['ID','BMI','AGE','LOS'])
+mask = demo_neg['LOS']<0
+demo_neg = demo_neg[~mask]
+
+neg_ex = make_table(demo_neg)
+neg_ex = pd.DataFrame(neg_ex)
+neg_ex.to_excel('demo_neg.xlsx')  
+        
+        
 
 #%%
 # df_missing,n_clinic,n_event = parchure.missing(x_days=False)
@@ -175,10 +285,10 @@ for i in range(k):
     print('------ Fold',i,' -----')
     
     # ----- Train / val  / test split and normalization ---------
-    parchure.Prepare(random.randint(0, 10000))
+    val,val_raw,train,train_raw,test,test_raw = parchure.Prepare(random.randint(0, 10000))
     
     # ----- Build feature vectors -----
-    imputer, imputer_raw = parchure.Build_feature_vectors(i,str(model)+'_'+str(n_features)) 
+    imputer, imputer_raw,pos_tot,neg_tot = parchure.Build_feature_vectors(i,str(model)+'_'+str(n_features)) 
     
     if i == 0:
         selector = parchure.feature_selection(n_keep)

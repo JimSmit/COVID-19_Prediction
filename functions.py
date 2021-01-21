@@ -265,7 +265,7 @@ def importer_labs(file,encoding,sep,header,specs,labs=True,filter=True,nrows=Non
         col_list = ['PATIENTNR','OMSCHRIJVING','BMI','LEEFTIJD',
                     'OPNAMEDATUM','ONTSLAGDATUM','HERKOMST',
                     'BESTEMMING',
-                # 'DOSSIER_BEGINDATUM','DOSSIER_EINDDATUM',
+                'DOSSIER_BEGINDATUM','DOSSIER_EINDDATUM',
                 'OPNAMETYPE','AFNAMEDATUM','DESC','UITSLAG','UNIT'
                 ]
 
@@ -278,7 +278,7 @@ def importer_labs(file,encoding,sep,header,specs,labs=True,filter=True,nrows=Non
         usecols = [0,1,2,3,
                     4,5,7,
                    9,
-                   # 10,11,
+                    10,11,
                    13,14,17,18,19]
     else:
         usecols = None
@@ -292,8 +292,8 @@ def importer_labs(file,encoding,sep,header,specs,labs=True,filter=True,nrows=Non
                 'ONTSLAGDATUM': str,
                 'HERKOMST':'category',
                 'BESTEMMING':'category',
-                # 'DOSSIER_BEGINDATUM':str,
-                # 'DOSSIER_EINDDATUM':str,
+                'DOSSIER_BEGINDATUM':str,
+                'DOSSIER_EINDDATUM':str,
                 'OPNAMETYPE':'category',
                 'AFNAMEDATUM':str,
                 'DESC':'category',
@@ -434,7 +434,7 @@ def importer_vitals(file,encoding,sep,header,):
                 
                 }
     
-    data =  pd.read_csv(file,
+    data =  pd.read_excel(file,
                         # engine='python',
                         sep=sep,
                         # lineterminator='\r',
@@ -473,7 +473,9 @@ def cleaner_labs(data):
     
 
     dates = [
-        # 'OPNAMEDATUM','ONTSLAGDATUM','DOSSIER_BEGINDATUM','DOSSIER_EINDDATUM','UITSLAGDATUM',
+        'OPNAMEDATUM','ONTSLAGDATUM',
+        'DOSSIER_BEGINDATUM','DOSSIER_EINDDATUM',
+        # 'UITSLAGDATUM',
              'AFNAMEDATUM']
     for i in dates:
         print(i)
@@ -521,14 +523,14 @@ def cleaner_labs(data):
                                                                                                                                                                                      
     
     # labels
-    data['OPNAMETYPE'] = data['OPNAMETYPE'].str.replace('PUK','Klinische opname')
-    data['OPNAMETYPE'] = data['OPNAMETYPE'].str.replace('Dialyse','Klinische opname')
-    data['OPNAMETYPE'] = data['OPNAMETYPE'].str.replace('Dagverpleging','Klinische opname')
-    data['OPNAMETYPE'] = data['OPNAMETYPE'].str.replace('Anders klinisch','Klinische opname')
-    data['OPNAMETYPE'] = data['OPNAMETYPE'].str.replace('Observatie','Klinische opname')
-    data['OPNAMETYPE'] = data['OPNAMETYPE'].str.replace('Gastverblijf','Klinische opname')
-    data['OPNAMETYPE'] = data['OPNAMETYPE'].str.replace('Afwezigheid','Klinische opname')
-    data['OPNAMETYPE'] = data['OPNAMETYPE'].str.replace('Verkeerd bed','Klinische opname')
+    # data['OPNAMETYPE'] = data['OPNAMETYPE'].str.replace('PUK','Klinische opname')
+    # data['OPNAMETYPE'] = data['OPNAMETYPE'].str.replace('Dialyse','Klinische opname')
+    # data['OPNAMETYPE'] = data['OPNAMETYPE'].str.replace('Dagverpleging','Klinische opname')
+    # data['OPNAMETYPE'] = data['OPNAMETYPE'].str.replace('Anders klinisch','Klinische opname')
+    # data['OPNAMETYPE'] = data['OPNAMETYPE'].str.replace('Observatie','Klinische opname')
+    # data['OPNAMETYPE'] = data['OPNAMETYPE'].str.replace('Gastverblijf','Klinische opname')
+    # data['OPNAMETYPE'] = data['OPNAMETYPE'].str.replace('Afwezigheid','Klinische opname')
+    # data['OPNAMETYPE'] = data['OPNAMETYPE'].str.replace('Verkeerd bed','Klinische opname')
     
     
     # trasform UITSLAG in floats
@@ -672,11 +674,11 @@ def df_merger(df_1,df_2,df_cci,specs):
 
     
     col_list = ['PATIENTNR','BMI','LEEFTIJD','BESTEMMING',
-            'OPNAMETYPE','AFNAMEDATUM','DESC','UITSLAG']
+            'OPNAMETYPE','AFNAMEDATUM','DESC','UITSLAG','OPNAMEDATUM','ONTSLAGDATUM','DOSSIER_BEGINDATUM','DOSSIER_EINDDATUM',]
     df = df[col_list]
 
     df.columns = ['ID','BMI','AGE','DEST',
-            'DEPARTMENT','TIME','VARIABLE','VALUE']
+            'DEPARTMENT','TIME','VARIABLE','VALUE','ADMISSION','DISCHARGE','START','END']
     
     
     ids = np.unique(df['ID']) # Unique IDs in dataset
@@ -965,7 +967,6 @@ def df_preparer_pacmed (df,df_episodes,random_state,specs,norm=True):
         df_test =df_test_norm 
         
         # normalize demographics
-        
         df_demo_train_norm = pd.DataFrame()
         df_demo_val_norm = pd.DataFrame()
         df_demo_test_norm = pd.DataFrame()
@@ -1044,6 +1045,8 @@ def df_preparer(df,variables,ids_ICU_only,ids_events,random_state,specs,norm=Tru
     from sklearn.model_selection import train_test_split
     from sklearn.preprocessing import StandardScaler
    
+    
+    
     
     #Filter ICU only patients
     mask = df['ID'].isin(ids_ICU_only)
@@ -1171,12 +1174,16 @@ def df_preparer(df,variables,ids_ICU_only,ids_events,random_state,specs,norm=Tru
             scaler = StandardScaler()
             scaler.fit(df_train.loc[train_idx,'VALUE'].values.reshape(-1, 1)) # Fit scaler only on training set
             
+            
+            
             temp = df_train.loc[train_idx,'VALUE'].copy() #define temporary copy of Values from training df from only this variable.
+            
             if temp.shape[0] == 0:
                 print(v,'not in training set')
             else:
                 temp = scaler.transform(temp.values.reshape(-1, 1))
                 snip = df_train.loc[train_idx]
+                
                 snip = snip.assign(VALUE=temp)
                 df_train_norm = pd.concat([df_train_norm,snip],axis=0)
             
@@ -1186,6 +1193,7 @@ def df_preparer(df,variables,ids_ICU_only,ids_events,random_state,specs,norm=Tru
             else:
                 temp = scaler.transform(temp.values.reshape(-1, 1))
                 snip = df_val.loc[val_idx]
+                # print(snip)
                 snip = snip.assign(VALUE=temp)
                 df_val_norm = pd.concat([df_val_norm,snip],axis=0)
             
@@ -1311,6 +1319,7 @@ def prepare_feature_vectors(df,median,df_demo,demo_median,df_episodes,ids_events
     """
 
     from datetime import datetime, timedelta
+    import numpy as np    
     
 
     pos = list() #create empty list for pos labeled feature vectors
@@ -1345,8 +1354,8 @@ def prepare_feature_vectors(df,median,df_demo,demo_median,df_episodes,ids_events
         # print('labels in pos df:',df_pos['DEPARTMENT'].unique())
         
         #Make arrays out of dfs, keep only ID, VARIABLE, TIME, VALUE, DEPARTMENT
-        df_pos = df_pos[['ID','VARIABLE','TIME','VALUE','DEPARTMENT']]
-        df_neg = df_neg[['ID','VARIABLE','TIME','VALUE','DEPARTMENT']]
+        df_pos = df_pos[['ID','VARIABLE','TIME','VALUE','DEPARTMENT','DISCHARGE','START']]
+        df_neg = df_neg[['ID','VARIABLE','TIME','VALUE','DEPARTMENT','DISCHARGE','START']]
     
     print('pos df:',df_pos.shape, '-->',len(df_pos['ID'].unique()), 'patients')
     print('neg df:',df_neg.shape, '-->',len(df_neg['ID'].unique()), 'patients')
@@ -1355,51 +1364,52 @@ def prepare_feature_vectors(df,median,df_demo,demo_median,df_episodes,ids_events
     df_neg = np.asarray(df_neg)
     df_demo = np.asarray(df_demo)
 
-    # print('demographics shape:',df_demo.shape)
+    count = 0
     
     print('-----Sampling for positive patients-----') 
     
-    count = 0 
+     
     
-    for idx in np.unique(df_pos[:,0]): # loop over patients
-        patient = df_pos[np.where(df_pos[:,0]==idx)]
-        patient = patient[patient[:,2].argsort()]
-        demo = df_demo[np.where(df_demo[:,0]==idx)][:,1:][0]
+    n_pos_samples = int(specs['pred_window']/specs['int_pos'])
+    print(n_pos_samples+1, 'positive samples per positive patient')
+    
+    for idx in np.unique(df_pos[:,0]):                      # loop over patients
+        patient = df_pos[np.where(df_pos[:,0]==idx)] # isolate pat id
+        patient = patient[patient[:,2].argsort()]   # sort by date
+        demo = df_demo[np.where(df_demo[:,0]==idx)][:,1:][0] # isolate pat id
         
         entry_dens_patient = list()
         
-        if specs['label_type'] == 'ICU':
-            t_event = patient[np.where(patient[:,4]=='IC')][0,2]# define moment of ICU admission as first ICU measurement
-         
-        elif specs['label_type'] == 'mortality':
-            t_event = patient[-1,2]
+        t_event = patient[np.where(patient[:,4]=='IC')][:,6].min() # define moment of ICU admission 
+        
+        
             
-        if (t_event - patient[0,2]).total_seconds() / 3600.0 < specs['gap']: # cannot label patients for which time between start and event is shorter than the gap
+        if (t_event - patient[:,2].min()).total_seconds() / 3600.0 < specs['gap']: # cannot label patients for which time between start and event is shorter than the gap
             count += 1
+            
         else:
             
-            #For positive feature vectors of positive patient
+            # DEFINE TIME VECTOR
             ts = []            
             t = t_event - timedelta(hours=specs['gap']) #initialize t
-            window = specs['pred_window']
-            los = np.round((t_event - patient[0,2]).total_seconds() / 3600.0,0) #initiate LOS variable [hours] (start with total stay, extract day accroding to interval)
+            ts.append(t)
             
             
-            for i in range(int(window/specs['int_pos'])): # Make array with timestamps to sample from, making steps of size 'int_pos'
-                ts.append(t)
+            los = np.round((t_event - patient[:,2].min()).total_seconds() / 3600.0,0) #initialize LOS variable [hours] 
+            
+            
+            for i in range(n_pos_samples): # Make array with timestamps to sample from, making steps of size 'int_pos'
+                
                 t = t - timedelta(hours=specs['int_pos'])
-
+                ts.append(t)
+                
             if len(ts) < 1:
-                print('pos patient',idx,'too short stay for pos samples')
+                print('wrong: ts is empty')
                 
             if los < 0:
-                    print(type(t_event))
-                    print('wrong')
-                    print('To ICU:',t_event)
-                    print('first timepoint:',patient[0,2])
-                    print(los)
+                print('wrong: los is negative')
                     
-            # count_day = 1
+            
             for t in ts:
                                     
                 temp = patient[np.where(patient[:,2]<t)]
@@ -1407,10 +1417,8 @@ def prepare_feature_vectors(df,median,df_demo,demo_median,df_episodes,ids_events
                 v,entry_dens = create_feature_window(temp,median,demo,demo_median,features,los,specs)
                 pos.append(v) # add feature vector to 'pos' list
                 y_pat.append(1) # add patient label
-                
                 entry_dens_patient.append(entry_dens)
                 
-                # if (count_day*int_pos)%24 == 0:
                 los -= specs['int_pos']
                 los = np.round(los,0)
                 # count_day += 1
@@ -1418,41 +1426,39 @@ def prepare_feature_vectors(df,median,df_demo,demo_median,df_episodes,ids_events
                 
             # For Negative feature vectors of positive patients
             ts = []            
-            t = t_event - timedelta(hours=specs['gap']+specs['pred_window']) #initialize t 
-            los = np.round((t_event - patient[0,2]).total_seconds() / 3600.0,0) #initiate day variable (start with total stay, extract day according to interval)
-            window = (t_event - patient[0,2]).total_seconds() / 3600.0 - specs['pred_window'] - specs['gap'] # window to sample from is full window - prediction window and gap
+            t = t_event - timedelta(hours=specs['gap']+specs['pred_window']+specs['int_neg']) #initialize t 
             
-            for i in range(int(window/specs['int_neg'])): # Make array with timestamps to sample from, making steps of size 'int_neg'
-                ts.append(t)
-                t = t - timedelta(hours=specs['int_neg'])
+            window =  np.round((t - patient[:,2].min()).total_seconds() / 3600.0,0)  # time window negative samples
             
+            if window < 0: # if no negative samples available for this patient
+                print('no negative samples for patient:',idx)
+            else:
                 
-            if len(ts) < 1:
-                print('pos patient',idx,'too short stay for neg samples')
+                ts.append(t) # initialize t
+                los = np.round((t - patient[:,2].min()).total_seconds() / 3600.0,0) #initialize los
                 
-            if los < 0:
-                    print('wrong')
-                    print('To ICU:',t_event)
-                    print('first timepoint:',patient[0,2])
-                    print(los)
+                
+                for i in range(int(window/specs['int_neg'])): # Make array with timestamps to sample from, making steps of size 'int_neg'
+                    
+                    t = t - timedelta(hours=specs['int_neg'])
+                    ts.append(t)
+                    
+                if len(ts) < 1:
+                    print('wrong: ts is empty')
+                    
+                if los < 0:
+                    print('wrong: negative los')
             
-            # count_day = 1
             for t in ts:
-                
-
                 temp = patient[np.where(patient[:,2]<t)]
-                
-                
+                             
                 v,entry_dens = create_feature_window(temp,median,demo,demo_median,features,los,specs)
                 neg.append(v)# add feature vector to 'neg' list
                 y_pat.append(1) # add patient label
-                
                 entry_dens_patient.append(entry_dens)
-                
-                # if (count_day*int_neg)%24 == 0:
+
                 los -= specs['int_neg']
                 los = np.round(los,0)
-                # count_day += 1
          
         if np.array(entry_dens_patient).shape[0] > 0:
             entry_dens_patient = list(np.array(entry_dens_patient).mean(axis=0))
@@ -1461,36 +1467,44 @@ def prepare_feature_vectors(df,median,df_demo,demo_median,df_episodes,ids_events
     print('-----Sampling for negative patient-----')
     
     for idx in np.unique(df_neg[:,0]): # loop over patients
-        patient = df_neg[np.where(df_neg[:,0]==idx)]
-        patient = patient[patient[:,2].argsort()]
-        demo = df_demo[np.where(df_demo[:,0]==idx)][:,1:][0]
-        t_event = patient[-1,2]
+    
+        patient = df_neg[np.where(df_neg[:,0]==idx)] # isolate by pid
+        patient = patient[patient[:,2].argsort()]   # sort by date
+        demo = df_demo[np.where(df_demo[:,0]==idx)][:,1:][0]  # isolate by pid  
+        
+        
+        if  pd.isnull(patient[:,2].min()):
+            print('no times available')
+        if pd.isnull(patient[:,6].min()):
+            # print('no discharge available')
+            t_event = patient[:,2].max()
+        else:            
+            t_event = patient[:,6].min() # event = discharge time
         
         entry_dens_patient = list()
         
-        if (patient[-1,2] - patient[0,2]).total_seconds() / 3600.0 < specs['gap']: # cannot label patients with stay shorter than the gap
+        if (t_event - patient[:,2].min()).total_seconds() / 3600.0 < specs['gap']: # cannot label patients with stay shorter than the gap
             count+= 1
 
         else:
             ts = []            
-            t = patient[-1,2] #initialize t 
-            los = np.round((t_event - patient[0,2]).total_seconds() / 3600.0,0) #initiate day variable (start with total stay, extract day accroding to interval)
-            window = (patient[-1,2] - patient[0,2]).total_seconds() / 3600.0 # window to sample from is full window 
+            t = t_event - timedelta(hours=specs['gap']) #initialize t
+            ts.append(t)
             
-            for i in range(int(window/specs['int_neg'])): # Make array with timestamps to sample from, making steps of size 'int_neg'
-                ts.append(t)
+            los = np.round((t_event - patient[:,2].min()).total_seconds() / 3600.0,0) #initiate day variable (start with total stay, extract day accroding to interval)
+            
+            window = np.round((t_event - patient[:,2].min()).total_seconds() / 3600.0,0) # window to sample from is full window 
+            
+            for i in range(int(window/specs['int_neg'])-1): # Make array with timestamps to sample from, making steps of size 'int_neg'
                 t = t - timedelta(hours=specs['int_neg'])
-            
-            if len(ts) < 1:
-                print('neg patient',idx,'too short stay for any samples')
+                ts.append(t)
                 
+            if len(ts) < 1:
+                    print('wrong: ts is empty')
+                    
             if los < 0:
-                    print('wrong')
-                    print('To ICU:',t_event)
-                    print('first timepoint:',patient[0,2])
-                    print(los)
-                       
-            # count_day = 1
+                print('wrong: negative los')
+
             for t in ts:
                 
                 temp = patient[np.where(patient[:,2]<t)]
@@ -1498,19 +1512,16 @@ def prepare_feature_vectors(df,median,df_demo,demo_median,df_episodes,ids_events
                 v,entry_dens = create_feature_window(temp,median,demo,demo_median,features,los,specs)
                 neg.append(v)# add feature vector to 'neg' list
                 y_pat.append(0) # add patient label
-                
                 entry_dens_patient.append(entry_dens)
                 
-                # if (count_day*int_neg)%24 == 0:
                 los -= specs['int_neg']
                 los = np.round(los,0)
-                # count_day += 1
                 
         if np.array(entry_dens_patient).shape[0] > 0:
             entry_dens_patient = list(np.array(entry_dens_patient).mean(axis=0))
             entry_dens_full.append(entry_dens_patient)
             
-    print('number of patients with too little data for feature vector: ', count)            
+    print('number of patients with shorter stay than the defined GAP: ', count)            
     print(len(pos),len(neg))
     pos=np.array([np.array(x) for x in pos])
     neg=np.array([np.array(x) for x in neg])

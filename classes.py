@@ -71,7 +71,8 @@ class Parchure:
         self.df,self.features = df_merger(self.df_lab,self.df_vitals,self.df_cci,self.specs)
         self.ids_IC_only, self.ids_all, self.ids_clinic, self.ids_events = get_ids(self.df)
         
-    
+        return self.df,self.ids_events,self.ids_clinic
+        
     def missing(self,x_days=True):
         df_missing,n_clinic,n_event = missing(self.df,self.features,self.ids_clinic,self.ids_events,x_days=x_days)
         
@@ -100,8 +101,8 @@ class Parchure:
         self.demo_median_raw,self.median_raw = Prepare_imputation_vectors(self.df_demo_train_raw,self.df_train_raw,self.features)
         
         
-        
-        
+        return self.df_val,self.df_val_raw,self.df_train,self.df_train_raw,self.df_test,self.df_test_raw
+    
     def Build_feature_vectors(self,i,name):
         print('TRAINING DATA')
                    
@@ -128,46 +129,61 @@ class Parchure:
                                                                         self.ids_events,self.features,self.specs)
         
         
-        if i == 0:
+        # if i == 0:
             
-            print('PLOT ENTRY DENSITIES')
-            entry_dens = pd.DataFrame(np.concatenate([entry_dens_train,entry_dens_val,entry_dens_test],axis=0))
+        #     print('PLOT ENTRY DENSITIES')
+        #     entry_dens = pd.DataFrame(np.concatenate([entry_dens_train,entry_dens_val,entry_dens_test],axis=0))
             
-            entry_dens.columns = make_total_features(self.features,self.specs,demo=False)
-            import matplotlib.pyplot as plt
-            import seaborn as sns
-            plt.figure()
-            ax = sns.boxplot(x="variable", y="value", data=pd.melt(entry_dens.iloc[:,:33]))
-            plt.setp(ax.get_xticklabels(), rotation=90)
-            plt.tight_layout()
-            plt.savefig(self.specs['save_results']+'/entry_density_raw',dpi=300)
+        #     entry_dens.columns = make_total_features(self.features,self.specs,demo=False)
+        #     import matplotlib.pyplot as plt
+        #     import seaborn as sns
+        #     plt.figure()
+        #     ax = sns.boxplot(x="variable", y="value", data=pd.melt(entry_dens.iloc[:,:33]))
+        #     plt.setp(ax.get_xticklabels(), rotation=90)
+        #     plt.tight_layout()
+        #     # plt.savefig(self.specs['save_results']+'/entry_density_raw',dpi=300)
             
             
-            plt.figure()
-            ax = sns.boxplot(x="variable", y="value", data=pd.melt(entry_dens.iloc[:,33:]))
-            plt.setp(ax.get_xticklabels(), rotation=90, fontsize=3)
-            plt.tight_layout()
-            plt.savefig(self.specs['save_results']+'/entry_density_rest',dpi=300)
+        #     plt.figure()
+        #     ax = sns.boxplot(x="variable", y="value", data=pd.melt(entry_dens.iloc[:,33:]))
+        #     plt.setp(ax.get_xticklabels(), rotation=90, fontsize=3)
+        #     plt.tight_layout()
+        #     # plt.savefig(self.specs['save_results']+'/entry_density_rest',dpi=300)
             
           
         if i == 0:
             print('PLOT CDFS')
-            features = ['AGE','SEX','LOS'] + list(self.features)
+            features = ['AGE','BMI','LOS'] + list(self.features)
             
             print(self.X_train_raw.shape)
             print(self.X_val_raw.shape)
             print(self.X_test_raw.shape)
             
-            X_raw_tot = np.concatenate([self.X_train_raw,self.X_val_raw,self.X_test_raw],axis=0)
-            print('total X shape:',X_raw_tot.shape)
+            train_pos = self.X_train_raw[self.y_train==1]
+            val_pos = self.X_val_raw[self.y_val==1]
+            test_pos = self.X_test_raw[self.y_test==1]
+            
+            pos_tot = np.concatenate([train_pos,val_pos,test_pos],axis=0)
+            
+            train_neg = self.X_train_raw[self.y_train==0]
+            val_neg = self.X_val_raw[self.y_val==0]
+            test_neg = self.X_test_raw[self.y_test==0]
+            
+            neg_tot = np.concatenate([train_neg,val_neg,test_neg],axis=0)
+            
+            
+            print('pos tot shape:',pos_tot.shape)
+            print('neg tot shape:',neg_tot.shape)
             print('number of features:', len(features))
             
-        self.X_train,self.X_train_raw,self.X_val,self.X_val_raw,self.X_test,self.X_test_raw,self.imputer,self.imputer_raw = KNN_imputer(self.X_train,self.X_train_raw,
-                                                                                                          self.X_val,self.X_val_raw,
-                                                                                                          self.X_test,self.X_test_raw,
-                                                                                                          self.specs)
+        # self.X_train,self.X_train_raw,self.X_val,self.X_val_raw,self.X_test,self.X_test_raw,self.imputer,self.imputer_raw = KNN_imputer(self.X_train,self.X_train_raw,
+        #                                                                                                   self.X_val,self.X_val_raw,
+        #                                                                                                   self.X_test,self.X_test_raw,
+        #                                                                                                   self.specs)
+        self.imputer = None
+        self.imputer_raw = None
         
-        return self.imputer,self.imputer_raw
+        return self.imputer,self.imputer_raw,pos_tot,neg_tot
     
     def Balance(self, undersampling = True):
         
