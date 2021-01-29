@@ -51,6 +51,10 @@ class Parchure:
     def import_pacmed(self,features):
         self.features = features
         self.df,self.df_episodes = importer_pacmed(self.features)        
+    
+    def import_MAASSTAD(self,inputs,encoders):
+        self.df_imported = importer_MAASSTAD(inputs[3],encoders[1],',',0,self.specs)
+        return self.df_imported
         
     def import_labs(self,inputs,encoders):
         self.df_lab,self.dict_unit = importer_labs(inputs[0],encoders[1],';',0,self.specs,filter=True)
@@ -65,141 +69,88 @@ class Parchure:
     def clean_vitals(self):
         self.df_vitals = cleaner_vitals(self.df_vitals)
         
+    def clean_MAASSTAD(self):
+        self.df_cleaned,self.features = cleaner_MAASSTAD(self.df_imported,self.specs)
+        self.ids_IC_only, self.ids_all, self.ids_clinic, self.ids_events = get_ids(self.df_cleaned)
+        
+        return self.features
         
     def merge(self):
         
-        self.df,self.features = df_merger(self.df_lab,self.df_vitals,self.df_cci,self.specs)
-        self.ids_IC_only, self.ids_all, self.ids_clinic, self.ids_events = get_ids(self.df)
+        self.df_cleaned,self.features = df_merger(self.df_lab,self.df_vitals,self.df_cci,self.specs)
+       
+        return self.df_cleaned
         
-        return self.df,self.ids_events,self.ids_clinic
         
     def missing(self,x_days=True):
         df_missing,n_clinic,n_event = missing(self.df,self.features,self.ids_clinic,self.ids_events,x_days=x_days)
         
         return df_missing,n_clinic,n_event
     
-    def Prepare_pacmed(self,random_state):
-        self.df_train,self.df_val,self.df_test, self.df_demo_train,self.df_demo_val,self.df_demo_test = df_preparer_pacmed(self.df,self.df_episodes,
-                                                                            random_state,self.specs) 
-        self.df_train_raw,self.df_val_raw, self.df_test_raw, self.df_demo_train_raw,self.df_demo_val_raw, self.df_demo_test_raw = df_preparer_pacmed(self.df,self.df_episodes,
-                                                                            random_state,self.specs,norm=False) 
-        
-        self.demo_median,self.median = Prepare_imputation_vectors(self.df_demo_train,self.df_train,self.features)
-        self.demo_median_raw,self.median_raw = Prepare_imputation_vectors(self.df_demo_train_raw,self.df_train_raw,self.features)
+
         
     
-    def Prepare(self,random_state):
-        print('start preparing dataframes')
-        self.df_train,self.df_val,self.df_test, self.df_demo_train,self.df_demo_val,self.df_demo_test = df_preparer(self.df,self.features,
-                                                                            self.ids_IC_only,self.ids_events,
-                                                                            random_state,self.specs) 
-        self.df_train_raw,self.df_val_raw, self.df_test_raw , self.df_demo_train_raw,self.df_demo_val_raw, self.df_demo_test_raw = df_preparer(self.df,self.features,
-                                                                   self.ids_IC_only,self.ids_events,
-                                                                     random_state,self.specs,norm=False) 
+    def fix_episodes(self):
+        # self.df,self.ids_events = fix_episodes(self.df_cleaned)
+        self.df,self.ids_events = fix_episodes(self.df_cleaned)
+        self.df_demo = Demographics(self.df)
         
-        self.demo_median,self.median = Prepare_imputation_vectors(self.df_demo_train,self.df_train,self.features)
-        self.demo_median_raw,self.median_raw = Prepare_imputation_vectors(self.df_demo_train_raw,self.df_train_raw,self.features)
-        
-        
-        return self.df_val,self.df_val_raw,self.df_train,self.df_train_raw,self.df_test,self.df_test_raw
+        return self.df,self.ids_events
+    
     
     def Build_feature_vectors(self,i,name):
         print('TRAINING DATA')
                    
 
-        self.X_train,self.y_train,entry_dens_train,_,_ = prepare_feature_vectors(self.df_train, self.median , self.df_demo_train,self.demo_median,self.df_episodes,
-                                                                          self.ids_events,self.features,self.specs)
-        
-        self.X_train_raw,_,_,_,_ = prepare_feature_vectors(self.df_train_raw, self.median_raw, self.df_demo_train_raw,self.demo_median_raw,self.df_episodes,
-                                                                          self.ids_events,self.features,self.specs)
-       
-        
-        print('VALIDATION DATA')
-        self.X_val,self.y_val,entry_dens_val,self.val_pos,self.y_pat = prepare_feature_vectors(self.df_val, self.median , self.df_demo_val,self.demo_median,self.df_episodes,
-                                                                        self.ids_events,self.features,self.specs)
-        
-        self.X_val_raw,_,_,_,_ = prepare_feature_vectors(self.df_val_raw, self.median_raw , self.df_demo_val_raw,self.demo_median_raw,self.df_episodes,
-                                                                        self.ids_events,self.features,self.specs)
-        
-        print('TEST DATA')
-        self.X_test,self.y_test,entry_dens_test,_,_ = prepare_feature_vectors(self.df_test, self.median , self.df_demo_test,self.demo_median,self.df_episodes,
-                                                                        self.ids_events,self.features,self.specs)
-        
-        self.X_test_raw,_,_,_,_ = prepare_feature_vectors(self.df_test_raw, self.median_raw , self.df_demo_test_raw,self.demo_median_raw,self.df_episodes,
-                                                                        self.ids_events,self.features,self.specs)
-        
+        self.X,self.y,entry_dens,self.y_pat,self.y_t = prepare_feature_vectors(self.df,self.df_demo,
+                                                                                   self.ids_events,self.features,self.specs)
+        from numpy import inf
+        self.X[np.where(self.X == np.inf)] = np.nan
         
         # if i == 0:
             
         #     print('PLOT ENTRY DENSITIES')
         #     entry_dens = pd.DataFrame(np.concatenate([entry_dens_train,entry_dens_val,entry_dens_test],axis=0))
-            
+        #     print(entry_dens.shape)
         #     entry_dens.columns = make_total_features(self.features,self.specs,demo=False)
         #     import matplotlib.pyplot as plt
         #     import seaborn as sns
         #     plt.figure()
-        #     ax = sns.boxplot(x="variable", y="value", data=pd.melt(entry_dens.iloc[:,:33]))
+        #     ax = sns.boxplot(x="variable", y="value", data=pd.melt(entry_dens.iloc[:,:25]),medianprops={'color':'red'})
         #     plt.setp(ax.get_xticklabels(), rotation=90)
         #     plt.tight_layout()
-        #     # plt.savefig(self.specs['save_results']+'/entry_density_raw',dpi=300)
+        #     # plt.savefig(self.specs['save_results']+'/entry_density_EMC',dpi=300)
             
             
         #     plt.figure()
-        #     ax = sns.boxplot(x="variable", y="value", data=pd.melt(entry_dens.iloc[:,33:]))
-        #     plt.setp(ax.get_xticklabels(), rotation=90, fontsize=3)
+        #     ax = sns.boxplot(x="variable", y="value", data=pd.melt(entry_dens.iloc[:,25:]),medianprops={'color':'red'})
+        #     plt.setp(ax.get_xticklabels(), rotation=90,fontsize=6)
         #     plt.tight_layout()
-        #     # plt.savefig(self.specs['save_results']+'/entry_density_rest',dpi=300)
+        #     plt.savefig(self.specs['save_results']+'/entry_density_EMC_rest',dpi=300)
             
-          
-        if i == 0:
-            print('PLOT CDFS')
-            features = ['AGE','BMI','LOS'] + list(self.features)
-            
-            print(self.X_train_raw.shape)
-            print(self.X_val_raw.shape)
-            print(self.X_test_raw.shape)
-            
-            train_pos = self.X_train_raw[self.y_train==1]
-            val_pos = self.X_val_raw[self.y_val==1]
-            test_pos = self.X_test_raw[self.y_test==1]
-            
-            pos_tot = np.concatenate([train_pos,val_pos,test_pos],axis=0)
-            
-            train_neg = self.X_train_raw[self.y_train==0]
-            val_neg = self.X_val_raw[self.y_val==0]
-            test_neg = self.X_test_raw[self.y_test==0]
-            
-            neg_tot = np.concatenate([train_neg,val_neg,test_neg],axis=0)
-            
-            
-            print('pos tot shape:',pos_tot.shape)
-            print('neg tot shape:',neg_tot.shape)
-            print('number of features:', len(features))
-            
-        # self.X_train,self.X_train_raw,self.X_val,self.X_val_raw,self.X_test,self.X_test_raw,self.imputer,self.imputer_raw = KNN_imputer(self.X_train,self.X_train_raw,
-        #                                                                                                   self.X_val,self.X_val_raw,
-        #                                                                                                   self.X_test,self.X_test_raw,
-        #                                                                                                   self.specs)
-        self.imputer = None
-        self.imputer_raw = None
-        
-        return self.imputer,self.imputer_raw,pos_tot,neg_tot
+
     
-    def Balance(self, undersampling = True):
-        
-        self.X_train_bal,self.y_train_bal = balancer(self.X_train,self.y_train,undersampling = undersampling)
-        # self.X_val,self.y_val = balancer(self.X_val,self.y_val,undersampling = undersampling)
-        # self.X_test,self.y_test = balancer(self.X_test,self.y_test,undersampling = undersampling)
+    
+    def Prepare(self,random_state):
+        print('start preparing dataframes')
         
         
-    def Train(self,w):
-        if self.specs['balance']:
-            
-            self.clf,train_auc,self.explainer,_,_,_,t = train_model(self.X_train_bal,self.y_train_bal,self.X_test,self.y_test,self.specs['model'])
-        else:
-            self.clf,train_auc,self.explainer,_,_,_,t = train_model(self.X_train,self.y_train,self.X_test,self.y_test,self.specs['model'],class_weight={0:1,1:w})
+        self.X_train_raw,self.y_train,self.X_val_raw,self.y_val,self.y_val_pat,self.y_val_t,self.X_test_raw,self.y_test = Split(self.X,
+                                                                                                self.y,self.y_pat,self.y_t,self.ids_events,
+                                                                                                          random_state,self.specs) 
         
-        return t
+        # Normalize
+        self.X_train,self.X_val,self.X_test = Normalize(self.X_train_raw,self.X_val_raw, self.X_test_raw,self.specs) 
+        
+        #Imputation
+        
+        self.X_train_raw,self.X_val_raw,self.X_test_raw,self.imputer_raw = Imputer(self.X_train_raw,
+                                                                                           self.X_val_raw, self.X_test_raw,self.specs) 
+        
+        self.X_train,self.X_val,self.X_test,self.imputer = Imputer(self.X_train,self.X_val,self.X_test,self.specs) 
+        
+        
+        return self.imputer_raw,self.imputer,self.y_val_pat,self.y_val_t,random_state
     
   
 
@@ -220,9 +171,7 @@ class Parchure:
             print('Perform Feature selection, keep only top',n)
             from sklearn.feature_selection import SelectKBest, chi2, f_classif
             self.selector = SelectKBest(f_classif, k=n).fit(self.X_train, self.y_train)
-            
-            
-            
+        
             mask = self.selector.get_support() #list of booleans
             new_features = [] # The list of your K best features
             for bool, feature in zip(mask, self.features):
@@ -233,9 +182,17 @@ class Parchure:
             self.total_features = np.asarray(new_features)
             print(self.total_features[-15:])
             
-        return self.selector
+        return self.selector,list(self.total_features)
         
+    def Optimize(self):
+        print('start optimizing with standard balanced weights')
+        if self.specs['FS']:
+            self.X_train = self.selector.transform(self.X_train)
+            self.X_val = self.selector.transform(self.X_val)
+            self.X_test = self.selector.transform(self.X_test)
         
+        self.clf,self.explainer,_,_ = train_model(self.X_train,self.y_train,self.X_test,self.y_test,self.specs['model'],n_trees=self.specs['n_trees'],class_weight='balanced')
+        return self.clf,self.explainer    
         
     def Optimize_weights(self):
         print('start optimizing weights')
@@ -256,7 +213,7 @@ class Parchure:
         ax.set_title('PR Curve')
         weights = [
             # 15        
-            10,15,20,25
+            1,5,10,15,20,30
                    ]
         best_ap = 0
         t_best = 0        
@@ -273,7 +230,7 @@ class Parchure:
                 self.explainer = explainer
                 t_best = t
         ax.legend(loc='lower left')    
-        plt.savefig('results/PR_optimization',dpi=300)
+
         
         return t_best
     
@@ -292,6 +249,7 @@ class Parchure:
         fpr, tpr, _ = metrics.roc_curve(self.y_val, predictions)
         auc = metrics.auc(fpr, tpr)
         ap = average_precision_score(self.y_val, predictions)
+        print('AUC on validation set:',auc)
         print('Average precision on validation set:',ap)
         # NEWS
         X_train, X_val = build_news(self.X_train_raw,self.X_val_raw,1) 
@@ -299,13 +257,11 @@ class Parchure:
         auc_n = metrics.auc(fpr_n, recall_n)
         ap_n = AP_manually(precision_n, recall_n)
         
-        #Dummy
-        model = DummyClassifier(strategy='stratified')
-        model.fit(self.X_train, self.y_train)
-        yhat = model.predict_proba(self.X_val)
-        naive_probs = yhat[:, 1]
         
-        return self.clf,self.explainer,self.df_val,self.median,self.df_demo_val,self.demo_median,self.df_val_raw,self.median_raw,self.df_demo_val_raw,self.demo_median_raw,precision,recall,ap,fpr,tpr,auc,self.y_val,predictions,precision_n,recall_n,fpr_n,ap_n,auc_n,X_val,naive_probs,self.X_val
+        print('N feature vectors in validation fold:',len(self.y_val))
+        print('Prevalence in validation fold:',sum(self.y_val)/len(self.y_val))
+        
+        return self.y_val,predictions,X_val,self.X_val
     
         
     def Evaluate(self,beta):

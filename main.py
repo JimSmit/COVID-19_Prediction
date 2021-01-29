@@ -24,7 +24,8 @@ from classes import *
 # inputs = ['Data_EMC/labs_up_to_date.csv','Data_EMC/20201102_covid data_metingen_alive.csv','Data_EMC/20201102_covid data_metingen_dead.csv']
 
 # inputs = ['D:/Data_EMC/20201116_covid_data_lab.csv','D:/Data_EMC/20201115_covid_data_metingen.csv']
-inputs = ['../../Data_EMC/20210112_covid data_lab.csv','../../Data_EMC/20210111_covid data_metingen.xlsx','../../Data_EMC/pirate.xlsx']
+inputs = ['../../Data_EMC/20201214_covid_data_lab.csv','../../Data_EMC/20201214_covid_data_metingen.csv','../../Data_EMC/pirate.xlsx',
+          '../../Data_EMC/MCOLS aanlevering _ 20210126_V3.xlsx']
 # inputs = ['../Data_EMC/20201130_covid_data_lab.csv','../Data_EMC/20201123_covid data_metingen.csv','../Data_EMC/pirate.xlsx']
 encoders = ['utf-8',"ISO-8859-1",'ascii']
 
@@ -42,11 +43,12 @@ n_keep = 50
 
 
 # prints
-prints_to_text = True
+prints_to_text = False
 save_model= True
-save_results_dir = 'results_test'
+save_results_dir = '../results_28_01'
+save_model_dir = '../saved_model_28_01'
 
-k = 10
+k = 3
 
 # Input characteristics
 n_features = 20
@@ -93,130 +95,26 @@ if policy:
     print('No IC policy patients filtered')
 #%%
 parchure = Parchure(specs)
+data = parchure.import_MAASSTAD(inputs,encoders)
+features = parchure.clean_MAASSTAD()
+df_full,ids_events = parchure.fix_episodes()
+parchure.Build_feature_vectors(1,str(model)+'_'+str(n_features))
 
-# # parchure.import_pacmed(n_features)  # Pacmed data, Feature selection in this func
 
-parchure.import_cci(inputs)
-
-data, dict_unit = parchure.import_labs(inputs,encoders)  # EMC data
-parchure.clean_labs()
-parchure.import_vitals(inputs,encoders)
-parchure.clean_vitals()
-df,ids_events,ids_clinic = parchure.merge()    #feature selection in this func
+# parchure = Parchure(specs)
+# parchure.import_cci(inputs)
+# data, dict_unit = parchure.import_labs(inputs,encoders)  # EMC data
+# parchure.clean_labs()
+# parchure.import_vitals(inputs,encoders)
+# parchure.clean_vitals()
+# df_raw = parchure.merge()    #feature selection in this func
+# df_full, ids_events = parchure.fix_episodes()
 
 
 # parchure.Optimize_trees()
 
-
-
 #%%
-df_pos = pd.DataFrame()
-for i in ids_events:
-    ex = df[df['ID']==i].sort_values(by='TIME')
-    df_pos = pd.concat([df_pos,ex],axis=0)
-    
 
-df_neg = pd.DataFrame()
-for i in ids_clinic:
-    ex = df[df['ID']==i].sort_values(by='TIME')
-    df_neg = pd.concat([df_neg,ex],axis=0)
-    
-
-
-demo_pos = list()
-
-for i in np.unique(df_pos['ID']):
-    demo = list()
-    demo.append(i)
-    
-    ex = df_pos[df_pos['ID']==i]
-    
-    if ex['BMI'].dropna().shape[0]<1:
-        demo.append(np.nan)
-    else:
-        demo.append(np.round(float(ex['BMI'].dropna().min()),1))
-    
-    if ex['AGE'].dropna().shape[0]<1:
-        demo.append(np.nan)
-    else:
-        demo.append(int(ex['AGE'].dropna().min()))
-    
-    t_event = ex[ex['DEPARTMENT']=='IC']['START'].min()
-    demo.append(np.round((t_event-ex['TIME'].min()).total_seconds()/3600,0))
-    
-    demo_pos.append(demo)
-    
-demo_pos = pd.DataFrame(demo_pos,columns=['ID','BMI','AGE','LOS'])
-mask = demo_pos['LOS']<0
-demo_pos = demo_pos[~mask]
-
-def make_table(df):
-    ex = list()
-    ex.append(str(np.round(np.mean(df.AGE),1))+' ('+str(np.round(np.std(df.AGE),1))+')')
-    ex.append(str(np.round(np.median(df.dropna().AGE),1))+' ('+str(np.round(np.min(df.dropna().AGE),1))+','+str(np.round(np.max(df.dropna().AGE),1)) +')')
-    n = sum((df.AGE>=18) & (df.AGE<=45))
-    ex.append(str(n) + '('+ str(np.round(n/df.shape[0]*100,1))+ '%)')
-    n = sum((df.AGE>45) & (df.AGE<=65))
-    ex.append(str(n) + '('+ str(np.round(n/df.shape[0]*100,1))+ '%)')
-    n = sum((df.AGE>65) & (df.AGE<=80))
-    ex.append(str(n) + '('+ str(np.round(n/df.shape[0]*100,1))+ '%)')
-    n = sum((df.AGE>80))
-    ex.append(str(n) + '('+ str(np.round(n/df.shape[0]*100,1))+ '%)')
-    n = sum(df.AGE.isna())
-    ex.append(str(n) + '('+ str(np.round(n/df.shape[0]*100,1))+ '%)')
-    
-    ex.append(str(np.round(np.mean(df.dropna().BMI),1))+' ('+str(np.round(np.std(df.dropna().BMI),1))+')')
-    ex.append(str(np.round(np.median(df.dropna().BMI),1))+' ('+str(np.round(np.min(df.dropna().BMI),1))+','+str(np.round(np.max(df.dropna().BMI),1)) +')')
-    
-    n = sum((df.LOS<=24))
-    ex.append(str(n) + '('+ str(np.round(n/df.shape[0]*100,1))+ '%)')
-    n = sum((df.LOS>24) & (df.LOS<=72))
-    ex.append(str(n) + '('+ str(np.round(n/df.shape[0]*100,1))+ '%)')
-    n = sum((df.LOS>72) & (df.LOS<=240))
-    ex.append(str(n) + '('+ str(np.round(n/df.shape[0]*100,1))+ '%)')
-    n = sum((df.LOS>240))
-    ex.append(str(n) + '('+ str(np.round(n/df.shape[0]*100,1))+ '%)')
-        
-    return ex
-
-pos_ex = make_table(demo_pos)
-pos_ex = pd.DataFrame(pos_ex)
-pos_ex.to_excel('demo_pos.xlsx')
-
-demo_neg = list()
-
-for i in np.unique(df_neg['ID']):
-    demo = list()
-    demo.append(i)
-    
-    ex = df_neg[df_neg['ID']==i]
-    
-    if ex['BMI'].dropna().shape[0]<1:
-        demo.append(np.nan)
-    else:
-        demo.append(np.round(float(ex['BMI'].dropna().min()),1))
-    
-    if ex['AGE'].dropna().shape[0]<1:
-        demo.append(np.nan)
-    else:
-        demo.append(int(ex['AGE'].dropna().min()))
-    
-    if ex['DISCHARGE'].dropna().shape[0]<1:
-            demo.append(np.round((ex['TIME'].max()-ex['TIME'].min()).total_seconds()/3600,0))
-    else:
-        demo.append(np.round((ex['DISCHARGE'].min()-ex['TIME'].min()).total_seconds()/3600,0))
-    
-    demo_neg.append(demo)
-    
-demo_neg = pd.DataFrame(demo_neg,columns=['ID','BMI','AGE','LOS'])
-mask = demo_neg['LOS']<0
-demo_neg = demo_neg[~mask]
-
-neg_ex = make_table(demo_neg)
-neg_ex = pd.DataFrame(neg_ex)
-neg_ex.to_excel('demo_neg.xlsx')  
-        
-        
 
 #%%
 # df_missing,n_clinic,n_event = parchure.missing(x_days=False)
@@ -272,7 +170,8 @@ y_real = []
 y_proba = []
 X_n = []
 y_proba_na = []
-
+y_ts = []
+y_pats = []
 
 
 aps_NEWS = []
@@ -280,123 +179,130 @@ aps_model = []
 aucs_NEWS = []
 aucs_model = []
 
+
+
 for i in range(k):
     
     print('------ Fold',i,' -----')
     
-    # ----- Train / val  / test split and normalization ---------
-    val,val_raw,train,train_raw,test,test_raw = parchure.Prepare(random.randint(0, 10000))
-    
-    # ----- Build feature vectors -----
-    imputer, imputer_raw,pos_tot,neg_tot = parchure.Build_feature_vectors(i,str(model)+'_'+str(n_features)) 
+    imputer_raw,imputer,y_pat,y_t,random_state = parchure.Prepare(random.randint(0, 10000))
     
     if i == 0:
-        selector = parchure.feature_selection(n_keep)
+        selector,total_features = parchure.feature_selection(n_keep)
+        print(total_features)
        
-    # --------- optimize weight for minority class ------
-    t = parchure.Optimize_weights()
+    clf,explainer = parchure.Optimize()
     
     # ---- Get stats for this fold -------
-    clf, explainer,df_val,median,df_demo_val,demo_median,df_val_raw,median_raw,df_demo_val_raw,demo_median_raw,precision,recall,ap,fpr,tpr,auc,ytest,pred,precision_n,recall_n,fpr_n,ap_n,auc_n,X,pred_na,X_val = parchure.Predict()
-    aps_NEWS.append(ap_n)
-    aps_model.append(ap)
-    aucs_NEWS.append(auc_n)
-    aucs_model.append(auc)
+    y_true,y_pred,X,X_val = parchure.Predict()
     
-    # ------ Update best fold --------
-    if (i == 0) or (ap>ap_best):
-        ap_best = ap
-        clf_best = clf
-        explainer_best = explainer
-        
-        df_val_best = df_val
-        median_best = median
-        df_demo_val_best = df_demo_val
-        demo_median_best = demo_median
-        
-        df_val_raw_best = df_val_raw
-        median_raw_best = median_raw
-        df_demo_val_raw_best = df_demo_val_raw
-        demo_median_raw_best = demo_median_raw
-        
-        X_val_best = X_val
-        
-        imputer_best = imputer
-        imputer_raw_best = imputer_raw
-        
-        t_best = t
-        print('Updated best AP:',ap_best)
-    else:
-        print('best AP:', ap_best)
-            
-        
-    
-    #Dummy
-    y_proba_na.append(pred_na)
     
     #NEWS
+    precision_n, recall_n,fpr_n,_= results_news(X,y_true,'threshold')
+    auc_n = metrics.auc(fpr_n, recall_n)
+    ap_n = AP_manually(precision_n, recall_n)
+    
     lab = 'Fold %d AP=%.4f' % (i+1, np.round(ap_n,3))
     axes[0,0].step(recall_n, precision_n, label=lab)
     lab = 'Fold %d AUC=%.4f' % (i+1, np.round(auc_n,3))
     axes[0,1].step(fpr_n, recall_n, label=lab)
+
     X_n.append(X)
-
-
-    #Model
+    aps_NEWS.append(ap_n)
+    aucs_NEWS.append(auc_n)
+    
+    # MODEL
+    precision, recall, _ = precision_recall_curve(y_true, y_pred)
+    fpr, tpr, _ = metrics.roc_curve(y_true, y_pred)
+    auc = metrics.auc(fpr, tpr)
+    ap = average_precision_score(y_true, y_pred)
+    
     lab = 'Fold %d AP=%.4f' % (i+1, np.round(ap,3))
     axes[1,0].step(recall, precision, label=lab)
     lab = 'Fold %d AUC=%.4f' % (i+1, np.round(auc,3))
     axes[1,1].step(fpr, tpr, label=lab)
-    y_real.append(ytest)
-    y_proba.append(pred)
+    
+    y_real.append(y_true)
+    y_proba.append(y_pred)
+    y_ts.append(y_t)
+    y_pats.append(y_pat)
+    aps_model.append(ap)
+    aucs_model.append(auc)
+    
+    
+    if i ==0:
+        shap_values = explainer.shap_values(X_val)
+        shap_values_tot = shap_values[1]
+        X_val_tot = X_val
+    else:
+        X_val_tot = np.concatenate([X_val_tot,X_val],axis=0)
+        shap_values_tot = np.concatenate([shap_values_tot,explainer.shap_values(X_val)[1]],axis=0)
+    
+    # ------ Update best fold --------
+    if (i == 0) or (auc>auc_best):
+        auc_best = auc
+        clf_best = clf
+        explainer_best = explainer
+        random_state_best = random_state
+        imputer_best = imputer
+        imputer_raw_best = imputer_raw
+        
+        print('Updated best AUC:',auc_best, ' for validation fold ', i)
+        
+        
+            
+        
+print('best AUC found for validation fold:', i,' with: ', auc_best)
 
-
-
-
-if prints_to_text:
-    import sys
-    sys.stdout = open('results/results_'+str(pred_window)+'.txt','wt')
-    
-# --- Save model and attributes for later analysis---
-if save_model:
-    import pickle
-    filename = 'saved_model/trained_model.sav'
-    pickle.dump(clf_best, open(filename, 'wb'))
-    
-    filename = 'saved_model/explainer_best.sav'
-    pickle.dump(explainer_best, open(filename, 'wb'))
-    
-    filename = 'saved_model/imputer_best.sav'
-    pickle.dump(imputer_best, open(filename, 'wb'))
-    
-    filename = 'saved_model/imputer_raw_best.sav'
-    pickle.dump(imputer_raw_best, open(filename, 'wb'))
-    
-    if FS:
-        filename = 'saved_model/selector.sav'
-        pickle.dump(selector, open(filename, 'wb'))
-    
-    pd.DataFrame(df_val_best).to_csv('saved_model/df_val_best.csv')
-    pd.DataFrame(median_best).to_csv('saved_model/median_best.csv')
-    pd.DataFrame(df_demo_val_best).to_csv('saved_model/df_demo_val_best.csv')
-    pd.DataFrame(demo_median_best).to_csv('saved_model/demo_median_best.csv')
-    
-    pd.DataFrame(df_val_raw_best).to_csv('saved_model/df_val_raw_best.csv')
-    pd.DataFrame(median_raw_best).to_csv('saved_model/median_raw_best.csv')
-    pd.DataFrame(df_demo_val_raw_best).to_csv('saved_model/df_demo_val_raw_best.csv')
-    pd.DataFrame(demo_median_raw_best).to_csv('saved_model/demo_median_raw_best.csv')
-    pd.DataFrame(X_val_best).to_csv('saved_model/X_val_best.csv')
 
 aps_NEWS = np.asarray(aps_NEWS)
-aps_model = np.asarray(aps_model)
+X_n_full = np.concatenate(X_n)
 aucs_NEWS = np.asarray(aucs_NEWS)
+
+aps_model = np.asarray(aps_model)
 aucs_model = np.asarray(aucs_model)
 
 
 y_real_full = np.concatenate(y_real)
-y_proba_na_full = np.concatenate(y_proba_na)
-X_n_full = np.concatenate(X_n)
 y_proba_full = np.concatenate(y_proba)
+y_t_full = np.concatenate(y_ts)
+y_pat_full = np.concatenate(y_pats)
+
+assert y_real_full.shape == y_proba_full.shape == y_t_full.shape == y_pat_full.shape
+
+if prints_to_text:
+    import sys
+    sys.stdout = open(save_results_dir+'/results_'+str(pred_window)+'.txt','wt')
+    
+# --- Save model and attributes for later analysis---
+if save_model:
+    import pickle
+    filename = save_model_dir+'/trained_model.sav'
+    pickle.dump(clf_best, open(filename, 'wb'))
+    
+    filename = save_model_dir+'/explainer_best.sav'
+    pickle.dump(explainer_best, open(filename, 'wb'))
+    
+    filename = save_model_dir+'/imputer_best.sav'
+    pickle.dump(imputer_best, open(filename, 'wb'))
+    
+    filename = save_model_dir+'/imputer_raw_best.sav'
+    pickle.dump(imputer_raw_best, open(filename, 'wb'))
+    
+    if FS:
+        filename = save_model_dir+'/selector.sav'
+        pickle.dump(selector, open(filename, 'wb'))
+    
+    
+    pd.DataFrame(X_val_tot).to_csv(save_model_dir+'/X_val_tot.csv')
+    pd.DataFrame(shap_values_tot).to_csv(save_model_dir+'/shap_values_tot.csv')
+    
+    
+    pd.DataFrame(y_real_full).to_csv(save_model_dir+'/y_real_full.csv')
+    pd.DataFrame(y_proba_full).to_csv(save_model_dir+'/y_proba_full.csv')
+    pd.DataFrame(X_n_full).to_csv(save_model_dir+'/X_n_full.csv')
+    pd.DataFrame(y_t_full).to_csv(save_model_dir+'/y_t_full.csv')
+    pd.DataFrame(y_pat_full).to_csv(save_model_dir+'/y_pat_full.csv')
 
 
 # ---------- NEWS ---------------------
@@ -404,9 +310,6 @@ precision, recall,fpr,thresholds = results_news(X_n_full,y_real_full,'threshold'
 lab = 'Overall AP=%.4f' % (np.round(AP_manually(precision, recall),3))
 axes[0,0].step(recall, precision, label=lab, lw=2, color='black')
 
-precision_na, recall_na, _ = precision_recall_curve(y_real_full, y_proba_na_full)
-lab = 'Dummy AP=%.4f' % np.round(average_precision_score(y_real_full, y_proba_na_full),3) 
-axes[0,0].step(recall_na, precision_na, label=lab, lw=2, color='grey')
 
 axes[0,0].set_xlabel('Recall')
 axes[0,0].set_ylabel('Precision')
@@ -430,33 +333,6 @@ print('ap Model:', aps_model,' \n mean:',np.mean(aps_model), ' \n std:', np.std(
 print('auc NEWS:', aucs_NEWS,' \n mean:',np.mean(aucs_NEWS), ' \n std:', np.std(aucs_NEWS))
 print('auc Model:', aucs_model,' \n mean:',np.mean(aucs_model), ' \n std:', np.std(aucs_model))
 
-
-#Overall confusion matrix NEWS
-print("OVERALL STATS NEWS")
-
-
-#leave out last value for precision(=1) and recall (=0)
-precision = precision[:-1]
-recall = recall[:-1]
-thresholds = thresholds[:-1]
-    
-betas = [2,3,4,5,6,7,8,9,10]
-for beta in betas:
-    print('\n --- results for Beta = ',beta, '--------')
-    
-    f2_scores = (1+beta**2)*recall*precision/(recall+(beta**2*precision))    
-    idx = np.argwhere(np.isnan(f2_scores))
-    f2_scores = np.delete(f2_scores, idx)
-    thresholds = np.delete(thresholds, idx)
-    t = thresholds[np.argmax(f2_scores)]
-    preds = (y_proba_full>t).astype(int)
-    tn, fp, fn, tp = confusion_matrix(y_real_full, preds).ravel()
-    
-    print('TN:',tn,'FP:',fp,'FN:',fn,'TP:',tp)
-    print('sens:',np.round(tp/(tp+fn),2),'spec:',np.round(tn/(tn+fp),2))
-    r = np.round(tp/(tp+fn),2)
-    p = np.round(tp/(tp+fp),2)
-    print('Recall:',r,'Pecision:',p)
     
 
 # ------------- Model ----------------------
@@ -464,9 +340,6 @@ precision, recall, thresholds = precision_recall_curve(y_real_full, y_proba_full
 lab = 'Overall AP=%.4f' % np.round(average_precision_score(y_real_full, y_proba_full),3)
 axes[1,0].step(recall, precision, label=lab, lw=2, color='black')
 
-precision_na, recall_na, _ = precision_recall_curve(y_real_full, y_proba_na_full)
-lab = 'Dummy AP=%.4f' % np.round(average_precision_score(y_real_full, y_proba_na_full),3) 
-axes[1,0].step(recall_na, precision_na, label=lab, lw=2, color='grey')
 
 axes[1,0].set_xlabel('Recall')
 axes[1,0].set_ylabel('Precision')
@@ -486,50 +359,35 @@ axes[1,1].set_title('ROC Model')
 
 f.tight_layout()
 if save_model:
-    f.savefig('results/result.png',dpi=300)
+    f.savefig(save_results_dir+'/result.png',dpi=300)
 
 
-#Overall confusion matrix MODEL
-print('\n OVERALL STATS MODEL')
+print('----- best fold random seed:',random_state_best)
+print(total_features)
 
-#leave out last value for precision(=1) and recall (=0)
-precision = precision[:-1]
-recall = recall[:-1]
+import shap
+from matplotlib import cm
+from matplotlib.colors import ListedColormap, LinearSegmentedColormap
+newcmp = plt.get_cmap('cool')
+plt.figure()
 
-
-betas = [2,3,4,5,6,7,8,9,10]
-betas_POC = []
-for beta in betas:
-    print('\n --- results for Beta = ',beta, '--------')
-    
-    f2_scores = (1+beta**2)*recall*precision/(recall+(beta**2*precision))    
-    idx = np.argwhere(np.isnan(f2_scores))
-    f2_scores = np.delete(f2_scores, idx)
-    thresholds = np.delete(thresholds, idx)
-    t = thresholds[np.argmax(f2_scores)]
-    print('optimal threshold:',t)
-    preds = (y_proba_full>t).astype(int)
-    tn, fp, fn, tp = confusion_matrix(y_real_full, preds).ravel()
-    print('TN:',tn,'FP:',fp,'FN:',fn,'TP:',tp)
-    print('sens:',np.round(tp/(tp+fn),2),'spec:',np.round(tn/(tn+fp),2))
-    r = np.round(tp/(tp+fn),2)
-    p = np.round(tp/(tp+fp),2)
-    print('Recall:',r,'Pecision:',p)
-    if np.round(tp/(tp+fn),2) > specs['recall_threshold']:
-        betas_POC.append(beta)
-
-        
-betas_POC = np.asarray(betas_POC)
-print('Beta values which guarantee'+ str(specs['recall_threshold'])+' sensitivity:', betas_POC)
+shap.summary_plot(shap_values_tot, features=X_val_tot, feature_names=total_features,plot_type='dot',show=False,max_display=25)
+for fc in plt.gcf().get_children():
+    for fcc in fc.get_children():
+        if hasattr(fcc, "set_cmap"):
+            fcc.set_cmap(newcmp)
+plt.tight_layout()
+plt.savefig(save_results_dir+'/Shap_summary_violin_full.png',dpi=200)
 
 
-if len(betas_POC) < 1:
-    beta = 2
-    print('Something up with betas, do run with beta = 2')
-else:
-    beta=np.min(betas_POC)
-print('----- START POC plots with best threshold:',t_best)
-print('idxs for fetaures to keep:',top_idx)
+plt.figure()
+shap.summary_plot(shap_values_tot, features=X_val_tot, feature_names=total_features,plot_type='bar',show=False,max_display=15)
+plt.tight_layout()
+plt.savefig(save_results_dir+'/Shap_summary_bar.png',dpi=200)
+
+
+
+
 #%%
 
 # parchure.Prepare(random.randint(0, 100),val_share=val_share) # Train / val  / test split and normalization
@@ -607,23 +465,23 @@ print('idxs for fetaures to keep:',top_idx)
 
 #%% Proof of concept
 
-from functions import *
-from classes import *
+# from functions import *
+# from classes import *
 
 
-X_val_pos = parchure.Proof_of_concept(clf_best,explainer_best,imputer_best,imputer_raw_best,
-                                        df_val_best,median_best,df_demo_val_best,demo_median_best,
-                                        df_val_raw_best,median_raw_best,df_demo_val_raw_best,demo_median_raw_best,
-                                        t_best,1,'pos',plot=False)
+# X_val_pos = parchure.Proof_of_concept(clf_best,explainer_best,imputer_best,imputer_raw_best,
+#                                         df_val_best,median_best,df_demo_val_best,demo_median_best,
+#                                         df_val_raw_best,median_raw_best,df_demo_val_raw_best,demo_median_raw_best,
+#                                         t_best,1,'pos',plot=False)
 
-X_val_neg = parchure.Proof_of_concept(clf_best,explainer_best,imputer_best,imputer_raw_best,
-                                        df_val_best,median_best,df_demo_val_best,demo_median_best,
-                                        df_val_raw_best,median_raw_best,df_demo_val_raw_best,demo_median_raw_best,
-                                        t_best,1,'neg',plot=False)
+# X_val_neg = parchure.Proof_of_concept(clf_best,explainer_best,imputer_best,imputer_raw_best,
+#                                         df_val_best,median_best,df_demo_val_best,demo_median_best,
+#                                         df_val_raw_best,median_raw_best,df_demo_val_raw_best,demo_median_raw_best,
+#                                         t_best,1,'neg',plot=False)
 
-X_val_tot = np.concatenate([X_val_pos,X_val_neg],axis=0)
+# X_val_tot = np.concatenate([X_val_pos,X_val_neg],axis=0)
 
-parchure.Global_Feature_importance(X_val_tot,explainer_best,clf_best)
+# parchure.Global_Feature_importance(X_val_tot,explainer_best,clf_best)
 
 # X_val_pos = parchure.Proof_of_concept(clf_best,explainer_best,imputer_best,imputer_raw_best,
 #                                         df_val_best,median_best,df_demo_val_best,demo_median_best,
@@ -634,74 +492,4 @@ parchure.Global_Feature_importance(X_val_tot,explainer_best,clf_best)
 #                                         df_val_best,median_best,df_demo_val_best,demo_median_best,
 #                                         df_val_raw_best,median_raw_best,df_demo_val_raw_best,demo_median_raw_best,
 #                                         t_best,1,'neg',plot=True)
-
-#%% Nested CV
-
-# parchure = Parchure(inputs=inputs,encoders=encoders)
-
-# # parchure.import_pacmed(n_features)  # Pacmed data, Feature selection in this func
-
-# parchure.import_labs()  # EMC data
-# parchure.clean_labs()
-# parchure.import_vitals()
-# parchure.clean_vitals()
-# parchure.merge(n_features)    #feature selection in this func
-
-# train_aucs = []
-# aucs = []
-# tns = []
-# fps = []
-# fns=[]
-# tps=[]
-
-
-# for i in range(10): # 10 fold CV
-#     parchure.Prepare(random.randint(0, 10),val_share=val_share) # Train / val  / test split and normalization
-#     parchure.Build_feature_vectors(1,pred_window,gap,freq,feature_window,str(model)+'_'+str(n_features)) 
-#     parchure.Balance(undersampling=True)
-#     parchure.Train(model=model,balance=True)
-#     auc,tn, fp, fn, tp = parchure.Evaluate()
-    
-#     if i ==1:
-#         FI,features = parchure.Plot_results(feature_window,model)
-            
-#     aucs.append(auc)
-#     tns.append(tn)
-#     fps.append(fp)
-#     fns.append(fn)
-#     tps.append(tp)
-#     print('----------------AUC of CV ',i,':',auc,'---------------------------- \n \n')
-#     print('----------------Confusion matrix of CV ',i,':','TN:',tn,'FP:',fp,'FN:',fn,'TP:',tp,'------- \n \n')
-    
-# print('-------------------')
-# print('RESULTS FOR ',model,'predicting',label_type,' \n n lab features:', n_features, '\n features window length:', feature_window, 'samples', 
-#       '\n gap:', gap,'hours \n pred window:',pred_window,'hours')
-
-# print('-----Training AUCS----')
-# print(train_aucs)
-# print('mean training auc:', np.mean(train_aucs))
-# print('std:',np.std(train_aucs))
-# print('-----Evaluation AUCS----')
-# print(aucs)
-# print('mean auc:', np.mean(aucs))
-# print('std:',np.std(aucs))
-# print('mean Confusion matrix:','TN:',np.mean(tns),'FP:',np.mean(fps),'FN:',np.mean(fns),'TP:',np.mean(tps))
-
-# features = np.asarray(['BMI','AGE']+list(features))
-
-# top_5_idx = FI.argsort()[-5:][::-1]
-# print('Top 5 features:',features[top_5_idx])
-
-
-
-# indices = np.argsort(FI)
-# plt.figure()
-# plt.title('Feature Importances')
-# plt.barh(range(len(features)), FI[indices], color='b', align='center')
-# plt.yticks(range(len(FI)), features[indices])
-# plt.xlabel('Relative Importance')
-
-# plt.tight_layout()
-# plt.savefig('feature_importance_'+str(model)+'_'+str(pred_window),dpi=300)
-# # plt.show()
 
