@@ -13,8 +13,8 @@ from functions import *
 
 
 class Parchure:
-    def __init__(self,specs):
-        self.specs = specs
+    def __init__(self):
+
         self.df_lab = pd.DataFrame
         self.df_vitals = pd.DataFrame
         self.df_episodes = pd.DataFrame
@@ -52,11 +52,13 @@ class Parchure:
         self.features = features
         self.df,self.df_episodes = importer_pacmed(self.features)        
     
-    def import_MAASSTAD(self,inputs,encoders):
+    def import_MAASSTAD(self,inputs,encoders,specs):
+        self.specs = specs
         self.df_imported = importer_MAASSTAD(inputs[3],encoders[1],',',0,self.specs)
         return self.df_imported
         
-    def import_labs(self,inputs,encoders):
+    def import_labs(self,inputs,encoders,specs):
+        self.specs = specs
         self.df_lab,self.dict_unit = importer_labs(inputs[0],encoders[1],';',0,self.specs,filter=True)
         
         return self.df_lab, self.dict_unit
@@ -69,7 +71,8 @@ class Parchure:
     def clean_vitals(self):
         self.df_vitals = cleaner_vitals(self.df_vitals)
         
-    def clean_MAASSTAD(self):
+    def clean_MAASSTAD(self,specs):
+        self.specs = specs
         self.df_cleaned,self.features = cleaner_MAASSTAD(self.df_imported,self.specs)
         self.ids_IC_only, self.ids_all, self.ids_clinic, self.ids_events = get_ids(self.df_cleaned)
         
@@ -95,42 +98,67 @@ class Parchure:
         self.df,self.ids_events = fix_episodes(self.df_cleaned)
         self.df_demo = Demographics(self.df)
         
-        return self.df,self.ids_events
+        return self.df,self.ids_events,self.df_demo
     
     
     def Build_feature_vectors(self,i,name):
         print('TRAINING DATA')
                    
 
-        self.X,self.y,entry_dens,self.y_pat,self.y_t = prepare_feature_vectors(self.df,self.df_demo,
+        self.X,self.y,entry_dens,self.y_pat,self.y_t,y_entry_dens = prepare_feature_vectors(self.df,self.df_demo,
                                                                                    self.ids_events,self.features,self.specs)
         from numpy import inf
         self.X[np.where(self.X == np.inf)] = np.nan
         
-        # if i == 0:
-            
-        #     print('PLOT ENTRY DENSITIES')
-        #     entry_dens = pd.DataFrame(np.concatenate([entry_dens_train,entry_dens_val,entry_dens_test],axis=0))
-        #     print(entry_dens.shape)
-        #     entry_dens.columns = make_total_features(self.features,self.specs,demo=False)
-        #     import matplotlib.pyplot as plt
-        #     import seaborn as sns
-        #     plt.figure()
-        #     ax = sns.boxplot(x="variable", y="value", data=pd.melt(entry_dens.iloc[:,:25]),medianprops={'color':'red'})
-        #     plt.setp(ax.get_xticklabels(), rotation=90)
-        #     plt.tight_layout()
-        #     # plt.savefig(self.specs['save_results']+'/entry_density_EMC',dpi=300)
-            
-            
-        #     plt.figure()
-        #     ax = sns.boxplot(x="variable", y="value", data=pd.melt(entry_dens.iloc[:,25:]),medianprops={'color':'red'})
-        #     plt.setp(ax.get_xticklabels(), rotation=90,fontsize=6)
-        #     plt.tight_layout()
-        #     plt.savefig(self.specs['save_results']+'/entry_density_EMC_rest',dpi=300)
-            
 
+        print('PLOT ENTRY DENSITIES')
+        
+        entry_dens = pd.DataFrame(entry_dens)
+        print(entry_dens.shape)
+
+        entry_dens.columns = make_total_features(self.features,self.specs,demo=False)
+        
+        plot_df = pd.DataFrame()
+        
+        entry_dens = entry_dens.iloc[:,5:14]
+        
+        for i in entry_dens.columns:
+            df = pd.DataFrame()
+            df['entry density'] = entry_dens[i]
+            df['Variable'] = i
+            df['Label'] = 'No transfer'
+            df['Label'].loc[y_entry_dens==1] = 'Transfer'
+            plot_df = pd.concat([plot_df,df],axis=0)
+        
+        plot_df.columns = ['entry density','Variable','Label'] 
+        
+        import matplotlib.pyplot as plt
+        import seaborn as sns
+        plt.figure()
+        ax = sns.boxplot(x="Variable", y="entry density", hue = 'Label',data=plot_df,medianprops={'color':'red'})
+        plt.setp(ax.get_xticklabels(), rotation=90)
+        plt.legend(bbox_to_anchor=(1.05, 1), loc=2, borderaxespad=0.)
+        plt.tight_layout()
+        plt.savefig(self.specs['save_results']+'/entry_density_EMC',dpi=300)
+        
+        Y = pd.DataFrame()
+        Y['label'] = self.y
+        Y['t_to_event'] = self.y_t
+        Y['patient'] = self.y_pat
+        
+        return self.X,entry_dens,Y
     
     
+    def Train_full_model(self,model):
+        # Normalize
+        self.X_norm,self.scaler = Normalize_full(self.X[:,:-1]) 
+        #Imputation
+        self.X_norm_imp,self.imputer = Imputer_full_model(self.X_norm,self.specs) 
+        #Train
+        self.clf,self.explainer = train_full_model(self.X_norm_imp,self.y,model)
+
+        return self.scaler,self.imputer,self.clf,self.explainer
+            
     def Prepare(self,random_state):
         print('start preparing dataframes')
         
@@ -140,7 +168,7 @@ class Parchure:
                                                                                                           random_state,self.specs) 
         
         # Normalize
-        self.X_train,self.X_val,self.X_test = Normalize(self.X_train_raw,self.X_val_raw, self.X_test_raw,self.specs) 
+        self.X_train,self.X_val,self.X_test,self.scaler = Normalize(self.X_train_raw,self.X_val_raw, self.X_test_raw,self.specs) 
         
         #Imputation
         
@@ -150,7 +178,7 @@ class Parchure:
         self.X_train,self.X_val,self.X_test,self.imputer = Imputer(self.X_train,self.X_val,self.X_test,self.specs) 
         
         
-        return self.imputer_raw,self.imputer,self.y_val_pat,self.y_val_t,random_state
+        return self.imputer_raw,self.imputer,self.y_val_pat,self.y_val_t,random_state,self.scaler
     
   
 
@@ -180,7 +208,7 @@ class Parchure:
             
             
             self.total_features = np.asarray(new_features)
-            print(self.total_features[-15:])
+            print(self.total_features)
             
         return self.selector,list(self.total_features)
         
@@ -252,7 +280,7 @@ class Parchure:
         print('AUC on validation set:',auc)
         print('Average precision on validation set:',ap)
         # NEWS
-        X_train, X_val = build_news(self.X_train_raw,self.X_val_raw,1) 
+        X_train, X_val = build_news(self.X_train_raw,self.X_val_raw,self.specs['feature_window'],self.specs['n_demo']) 
         precision_n, recall_n,fpr_n,_= results_news(X_val,self.y_val,'threshold')
         auc_n = metrics.auc(fpr_n, recall_n)
         ap_n = AP_manually(precision_n, recall_n)
@@ -272,7 +300,7 @@ class Parchure:
         
         # NEWS PERFORMANCE
         print('NEWS:')
-        X_train, X_val = build_news(self.X_train_raw,self.X_val_raw,self.specs['feature_window'])
+        X_train, X_val = build_news(self.X_train_raw,self.X_val_raw,self.specs['feature_window'],self.specs['n_demo'])
         precision_news, recall_news= results_news(X_val,self.y_val,'threshold')
 
         

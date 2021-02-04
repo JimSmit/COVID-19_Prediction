@@ -34,7 +34,7 @@ pred_window = 24
 gap = 0
 feature_window = 1
 label_type = 'ICU'
-model = 'RF'
+model = 'LR'
 knn = 2
 n_trees = 500
 recall_threshold = 0.8
@@ -43,20 +43,20 @@ n_keep = 50
 
 
 # prints
-prints_to_text = False
+prints_to_text = True
 save_model= True
-save_results_dir = '../results_28_01'
-save_model_dir = '../saved_model_28_01'
+save_results_dir = '../MAASSTAD/exc_LOS_LR'
+save_model_dir = '../MAASSTAD/exc_LOS_LR'
 
-k = 3
+k = 10
 
 # Input characteristics
 n_features = 20
 n_demo = 2
 
 #sampling strategy
-int_neg = 12
-int_pos = 12
+int_neg = 24
+int_pos = 24
 
 # CV
 val_share = 0.4
@@ -94,27 +94,77 @@ if time:
 if policy:
     print('No IC policy patients filtered')
 #%%
-parchure = Parchure(specs)
-data = parchure.import_MAASSTAD(inputs,encoders)
-features = parchure.clean_MAASSTAD()
-df_full,ids_events = parchure.fix_episodes()
-parchure.Build_feature_vectors(1,str(model)+'_'+str(n_features))
+# parchure = Parchure()
+# data = parchure.import_MAASSTAD(inputs,encoders,specs)
+# features = parchure.clean_MAASSTAD(specs)
+# df_full,ids_events,df_demo = parchure.fix_episodes()
+# X_MSD,dens_2,Y_MSD = parchure.Build_feature_vectors(1,str(model)+'_'+str(n_features))
 
 
-# parchure = Parchure(specs)
-# parchure.import_cci(inputs)
-# data, dict_unit = parchure.import_labs(inputs,encoders)  # EMC data
-# parchure.clean_labs()
-# parchure.import_vitals(inputs,encoders)
-# parchure.clean_vitals()
-# df_raw = parchure.merge()    #feature selection in this func
-# df_full, ids_events = parchure.fix_episodes()
-
+parchure = Parchure()
+parchure.import_cci(inputs)
+data, dict_unit = parchure.import_labs(inputs,encoders,specs)  # EMC data
+parchure.clean_labs()
+parchure.import_vitals(inputs,encoders)
+parchure.clean_vitals()
+df_raw = parchure.merge()    #feature selection in this func
+df_full, ids_events,df_demo = parchure.fix_episodes()
+X_EMC_LOS,dens_2,Y_EMC_LOS = parchure.Build_feature_vectors(1,str(model)+'_'+str(n_features))
 
 # parchure.Optimize_trees()
 
-#%%
+# %% TRAIN FULL MODEL
 
+scaler,imputer,clf,explainer = parchure.Train_full_model('LR')
+
+
+save_model_dir = '../EMC/full_model_LOS_LR'
+
+import pickle
+filename = save_model_dir+'/trained_model.sav'
+pickle.dump(clf, open(filename, 'wb'))
+
+filename = save_model_dir+'/scaler_best.sav'
+pickle.dump(scaler, open(filename, 'wb'))
+
+filename = save_model_dir+'/explainer_best.sav'
+pickle.dump(explainer, open(filename, 'wb'))
+
+filename = save_model_dir+'/imputer_best.sav'
+pickle.dump(imputer, open(filename, 'wb'))
+
+
+
+
+# %% LOAD MODEL
+import pickle
+save_model_dir = '../EMC/full_model_LOS_LR'
+
+filename = save_model_dir+'/trained_model.sav'
+clf = pickle.load(open(filename, 'rb'))
+filename = save_model_dir+'/scaler_best.sav'
+scaler = pickle.load(open(filename, 'rb'))
+filename = save_model_dir+'/explainer_best.sav'
+explainer = pickle.load(open(filename, 'rb'))
+filename = save_model_dir+'/imputer_best.sav'
+imputer = pickle.load(open(filename, 'rb'))
+
+
+X = X_MSD[:,:-1]
+# X = np.delete(X,1,1)
+y = Y_MSD.label
+
+y_pred,X = Predict_full_model(clf,scaler,imputer,X,y)    
+from sklearn import datasets, metrics
+metrics.plot_roc_curve(clf, X, y)
+plt.savefig(save_model_dir + '/ROC_curve.png',dpi=300)
+from sklearn.metrics import precision_recall_curve
+precision, recall, thresholds = precision_recall_curve(y, y_pred)
+plt.figure()
+plt.plot(recall,precision)
+plt.xlabel('Recall')
+plt.ylabel('Precision')
+plt.savefig(save_model_dir + '/PR_curve.png',dpi=300)
 
 #%%
 # df_missing,n_clinic,n_event = parchure.missing(x_days=False)
@@ -155,341 +205,260 @@ parchure.Build_feature_vectors(1,str(model)+'_'+str(n_features))
 # plt.savefig('Clinic_days',dpi=200)
 
 
+#%% Utility analysis
+
+Y = pd.read_csv('../COVID_PREDICT/Y_covid_predict.csv')
+prev = 0.017016317016317017
+plot_Utility(Y_MSD,specs,prev)
+
+
+
 #%%
 
 
-from sklearn.metrics import precision_recall_curve
-from sklearn.metrics import average_precision_score
-from sklearn import metrics
-from sklearn.metrics import confusion_matrix
+# from sklearn.metrics import precision_recall_curve
+# from sklearn.metrics import average_precision_score
+# from sklearn import metrics
+# from sklearn.metrics import confusion_matrix
 
-f, axes = plt.subplots(2, 2, figsize=(10, 10))
-
-
-y_real = []
-y_proba = []
-X_n = []
-y_proba_na = []
-y_ts = []
-y_pats = []
+# f, axes = plt.subplots(2, 2, figsize=(10, 10))
 
 
-aps_NEWS = []
-aps_model = []
-aucs_NEWS = []
-aucs_model = []
+# y_real = []
+# y_proba = []
+# X_n = []
+# y_proba_na = []
+# y_ts = []
+# y_pats = []
+
+
+# aps_NEWS = []
+# aps_model = []
+# aucs_NEWS = []
+# aucs_model = []
 
 
 
-for i in range(k):
+# for i in range(k):
     
-    print('------ Fold',i,' -----')
+#     print('------ Fold',i,' -----')
     
-    imputer_raw,imputer,y_pat,y_t,random_state = parchure.Prepare(random.randint(0, 10000))
+#     imputer_raw,imputer,y_pat,y_t,random_state,scaler = parchure.Prepare(random.randint(0, 10000))
     
-    if i == 0:
-        selector,total_features = parchure.feature_selection(n_keep)
-        print(total_features)
+#     if i == 0:
+#         selector,total_features = parchure.feature_selection(n_keep)
+#         print(total_features)
        
-    clf,explainer = parchure.Optimize()
+#     clf,explainer = parchure.Optimize()
     
-    # ---- Get stats for this fold -------
-    y_true,y_pred,X,X_val = parchure.Predict()
+#     # ---- Get stats for this fold -------
+#     y_true,y_pred,X,X_val = parchure.Predict()
     
     
-    #NEWS
-    precision_n, recall_n,fpr_n,_= results_news(X,y_true,'threshold')
-    auc_n = metrics.auc(fpr_n, recall_n)
-    ap_n = AP_manually(precision_n, recall_n)
+#     #NEWS
+#     precision_n, recall_n,fpr_n,_= results_news(X,y_true,'threshold')
+#     auc_n = metrics.auc(fpr_n, recall_n)
+#     ap_n = AP_manually(precision_n, recall_n)
     
-    lab = 'Fold %d AP=%.4f' % (i+1, np.round(ap_n,3))
-    axes[0,0].step(recall_n, precision_n, label=lab)
-    lab = 'Fold %d AUC=%.4f' % (i+1, np.round(auc_n,3))
-    axes[0,1].step(fpr_n, recall_n, label=lab)
+#     lab = 'Fold %d AP=%.4f' % (i+1, np.round(ap_n,3))
+#     axes[0,0].step(recall_n, precision_n, label=lab)
+#     lab = 'Fold %d AUC=%.4f' % (i+1, np.round(auc_n,3))
+#     axes[0,1].step(fpr_n, recall_n, label=lab)
 
-    X_n.append(X)
-    aps_NEWS.append(ap_n)
-    aucs_NEWS.append(auc_n)
+#     X_n.append(X)
+#     aps_NEWS.append(ap_n)
+#     aucs_NEWS.append(auc_n)
     
-    # MODEL
-    precision, recall, _ = precision_recall_curve(y_true, y_pred)
-    fpr, tpr, _ = metrics.roc_curve(y_true, y_pred)
-    auc = metrics.auc(fpr, tpr)
-    ap = average_precision_score(y_true, y_pred)
+#     # MODEL
+#     precision, recall, _ = precision_recall_curve(y_true, y_pred)
+#     fpr, tpr, _ = metrics.roc_curve(y_true, y_pred)
+#     auc = metrics.auc(fpr, tpr)
+#     ap = average_precision_score(y_true, y_pred)
     
-    lab = 'Fold %d AP=%.4f' % (i+1, np.round(ap,3))
-    axes[1,0].step(recall, precision, label=lab)
-    lab = 'Fold %d AUC=%.4f' % (i+1, np.round(auc,3))
-    axes[1,1].step(fpr, tpr, label=lab)
+#     lab = 'Fold %d AP=%.4f' % (i+1, np.round(ap,3))
+#     axes[1,0].step(recall, precision, label=lab)
+#     lab = 'Fold %d AUC=%.4f' % (i+1, np.round(auc,3))
+#     axes[1,1].step(fpr, tpr, label=lab)
     
-    y_real.append(y_true)
-    y_proba.append(y_pred)
-    y_ts.append(y_t)
-    y_pats.append(y_pat)
-    aps_model.append(ap)
-    aucs_model.append(auc)
+#     y_real.append(y_true)
+#     y_proba.append(y_pred)
+#     y_ts.append(y_t)
+#     y_pats.append(y_pat)
+#     aps_model.append(ap)
+#     aucs_model.append(auc)
     
     
-    if i ==0:
-        shap_values = explainer.shap_values(X_val)
-        shap_values_tot = shap_values[1]
-        X_val_tot = X_val
-    else:
-        X_val_tot = np.concatenate([X_val_tot,X_val],axis=0)
-        shap_values_tot = np.concatenate([shap_values_tot,explainer.shap_values(X_val)[1]],axis=0)
+#     if i ==0:
+#         if model != 'LR':
+#             shap_values = explainer.shap_values(X_val)
+#             shap_values_tot = shap_values[1]
+#         X_val_tot = X_val
+#     else:
+#         X_val_tot = np.concatenate([X_val_tot,X_val],axis=0)
+#         if model != 'LR':
+#             shap_values_tot = np.concatenate([shap_values_tot,explainer.shap_values(X_val)[1]],axis=0)
     
-    # ------ Update best fold --------
-    if (i == 0) or (auc>auc_best):
-        auc_best = auc
-        clf_best = clf
-        explainer_best = explainer
-        random_state_best = random_state
-        imputer_best = imputer
-        imputer_raw_best = imputer_raw
+#     # ------ Update best fold --------
+#     if (i == 0) or (auc>auc_best):
+#         auc_best = auc
+#         clf_best = clf
+#         scaler_best = scaler
+#         explainer_best = explainer
+#         random_state_best = random_state
+#         imputer_best = imputer
+#         imputer_raw_best = imputer_raw
         
-        print('Updated best AUC:',auc_best, ' for validation fold ', i)
+#         print('Updated best AUC:',auc_best, ' for validation fold ', i)
         
         
             
         
-print('best AUC found for validation fold:', i,' with: ', auc_best)
+# print('best AUC found for validation fold:', i,' with: ', auc_best)
 
 
-aps_NEWS = np.asarray(aps_NEWS)
-X_n_full = np.concatenate(X_n)
-aucs_NEWS = np.asarray(aucs_NEWS)
+# aps_NEWS = np.asarray(aps_NEWS)
+# X_n_full = np.concatenate(X_n)
+# aucs_NEWS = np.asarray(aucs_NEWS)
 
-aps_model = np.asarray(aps_model)
-aucs_model = np.asarray(aucs_model)
+# aps_model = np.asarray(aps_model)
+# aucs_model = np.asarray(aucs_model)
 
 
-y_real_full = np.concatenate(y_real)
-y_proba_full = np.concatenate(y_proba)
-y_t_full = np.concatenate(y_ts)
-y_pat_full = np.concatenate(y_pats)
+# y_real_full = np.concatenate(y_real)
+# y_proba_full = np.concatenate(y_proba)
+# y_t_full = np.concatenate(y_ts)
+# y_pat_full = np.concatenate(y_pats)
 
-assert y_real_full.shape == y_proba_full.shape == y_t_full.shape == y_pat_full.shape
+# Y = pd.DataFrame()
+# Y['label'] = y_real_full
+# Y['pred'] = y_proba_full
+# Y['time_to_event'] = y_t_full
+# Y['patient'] = y_pat_full
 
-if prints_to_text:
-    import sys
-    sys.stdout = open(save_results_dir+'/results_'+str(pred_window)+'.txt','wt')
+
+# assert y_real_full.shape == y_proba_full.shape == y_t_full.shape == y_pat_full.shape
+
+# if prints_to_text:
+#     import sys
+#     sys.stdout = open(save_results_dir+'/results_'+str(pred_window)+'.txt','wt')
     
-# --- Save model and attributes for later analysis---
-if save_model:
-    import pickle
-    filename = save_model_dir+'/trained_model.sav'
-    pickle.dump(clf_best, open(filename, 'wb'))
+# # --- Save model and attributes for later analysis---
+# if save_model:
+#     import pickle
+#     filename = save_model_dir+'/trained_model.sav'
+#     pickle.dump(clf_best, open(filename, 'wb'))
     
-    filename = save_model_dir+'/explainer_best.sav'
-    pickle.dump(explainer_best, open(filename, 'wb'))
+#     filename = save_model_dir+'/scaler_best.sav'
+#     pickle.dump(scaler_best, open(filename, 'wb'))
     
-    filename = save_model_dir+'/imputer_best.sav'
-    pickle.dump(imputer_best, open(filename, 'wb'))
+#     filename = save_model_dir+'/explainer_best.sav'
+#     pickle.dump(explainer_best, open(filename, 'wb'))
     
-    filename = save_model_dir+'/imputer_raw_best.sav'
-    pickle.dump(imputer_raw_best, open(filename, 'wb'))
+#     filename = save_model_dir+'/imputer_best.sav'
+#     pickle.dump(imputer_best, open(filename, 'wb'))
     
-    if FS:
-        filename = save_model_dir+'/selector.sav'
-        pickle.dump(selector, open(filename, 'wb'))
+#     filename = save_model_dir+'/imputer_raw_best.sav'
+#     pickle.dump(imputer_raw_best, open(filename, 'wb'))
+    
+#     if FS:
+#         filename = save_model_dir+'/selector.sav'
+#         pickle.dump(selector, open(filename, 'wb'))
     
     
-    pd.DataFrame(X_val_tot).to_csv(save_model_dir+'/X_val_tot.csv')
-    pd.DataFrame(shap_values_tot).to_csv(save_model_dir+'/shap_values_tot.csv')
-    
-    
-    pd.DataFrame(y_real_full).to_csv(save_model_dir+'/y_real_full.csv')
-    pd.DataFrame(y_proba_full).to_csv(save_model_dir+'/y_proba_full.csv')
-    pd.DataFrame(X_n_full).to_csv(save_model_dir+'/X_n_full.csv')
-    pd.DataFrame(y_t_full).to_csv(save_model_dir+'/y_t_full.csv')
-    pd.DataFrame(y_pat_full).to_csv(save_model_dir+'/y_pat_full.csv')
+#     pd.DataFrame(X_val_tot).to_csv(save_model_dir+'/X_val_tot.csv')
+#     if model != 'LR':
+#         pd.DataFrame(shap_values_tot).to_csv(save_model_dir+'/shap_values_tot.csv')
 
-
-# ---------- NEWS ---------------------
-precision, recall,fpr,thresholds = results_news(X_n_full,y_real_full,'threshold')
-lab = 'Overall AP=%.4f' % (np.round(AP_manually(precision, recall),3))
-axes[0,0].step(recall, precision, label=lab, lw=2, color='black')
-
-
-axes[0,0].set_xlabel('Recall')
-axes[0,0].set_ylabel('Precision')
-axes[0,0].legend(loc='upper right', fontsize='small')
-axes[0,0].set_title('PR-curve NEWS')
-
-
-auc = metrics.auc(fpr, recall)
-lab = 'Overall AUC=%.4f' % (np.round(auc,3))
-axes[0,1].step(fpr, recall, label=lab, lw=2, color='black')
-
-axes[0,1].set_xlabel('FPR')
-axes[0,1].set_ylabel('Recall')
-axes[0,1].legend(loc='lower right', fontsize='small')
-axes[0,1].set_title('ROC NEWS')
-
-
-
-print('ap NEWS:', aps_NEWS,' \n mean:',np.mean(aps_NEWS), ' \n std:', np.std(aps_NEWS))
-print('ap Model:', aps_model,' \n mean:',np.mean(aps_model), ' \n std:', np.std(aps_model))
-print('auc NEWS:', aucs_NEWS,' \n mean:',np.mean(aucs_NEWS), ' \n std:', np.std(aucs_NEWS))
-print('auc Model:', aucs_model,' \n mean:',np.mean(aucs_model), ' \n std:', np.std(aucs_model))
-
+#     pd.DataFrame(X_n_full).to_csv(save_model_dir+'/X_n_full.csv')
+#     pd.DataFrame(Y).to_csv(save_model_dir+'/Y.csv')
     
 
-# ------------- Model ----------------------
-precision, recall, thresholds = precision_recall_curve(y_real_full, y_proba_full)
-lab = 'Overall AP=%.4f' % np.round(average_precision_score(y_real_full, y_proba_full),3)
-axes[1,0].step(recall, precision, label=lab, lw=2, color='black')
+# # ---------- NEWS ---------------------
+# precision, recall,fpr,thresholds = results_news(X_n_full,y_real_full,'threshold')
+# lab = 'Overall AP=%.4f' % (np.round(AP_manually(precision, recall),3))
+# axes[0,0].step(recall, precision, label=lab, lw=2, color='black')
 
 
-axes[1,0].set_xlabel('Recall')
-axes[1,0].set_ylabel('Precision')
-axes[1,0].legend(loc='upper right', fontsize='small')
-axes[1,0].set_title('PR-curve Model')
-
-fpr, tpr, _ = metrics.roc_curve(y_real_full, y_proba_full)
-auc = metrics.auc(fpr, tpr)
-lab = 'Overall AUC=%.4f' % np.round(auc,3)
-axes[1,1].step(fpr, tpr, label=lab, lw=2, color='black')
-
-axes[1,1].set_xlabel('FPR')
-axes[1,1].set_ylabel('Recall')
-axes[1,1].legend(loc='lower right', fontsize='small')
-axes[1,1].set_title('ROC Model')
+# axes[0,0].set_xlabel('Recall')
+# axes[0,0].set_ylabel('Precision')
+# axes[0,0].legend(loc='upper right', fontsize='small')
+# axes[0,0].set_title('PR-curve NEWS')
 
 
-f.tight_layout()
-if save_model:
-    f.savefig(save_results_dir+'/result.png',dpi=300)
+# auc = metrics.auc(fpr, recall)
+# lab = 'Overall AUC=%.4f' % (np.round(auc,3))
+# axes[0,1].step(fpr, recall, label=lab, lw=2, color='black')
 
-
-print('----- best fold random seed:',random_state_best)
-print(total_features)
-
-import shap
-from matplotlib import cm
-from matplotlib.colors import ListedColormap, LinearSegmentedColormap
-newcmp = plt.get_cmap('cool')
-plt.figure()
-
-shap.summary_plot(shap_values_tot, features=X_val_tot, feature_names=total_features,plot_type='dot',show=False,max_display=25)
-for fc in plt.gcf().get_children():
-    for fcc in fc.get_children():
-        if hasattr(fcc, "set_cmap"):
-            fcc.set_cmap(newcmp)
-plt.tight_layout()
-plt.savefig(save_results_dir+'/Shap_summary_violin_full.png',dpi=200)
-
-
-plt.figure()
-shap.summary_plot(shap_values_tot, features=X_val_tot, feature_names=total_features,plot_type='bar',show=False,max_display=15)
-plt.tight_layout()
-plt.savefig(save_results_dir+'/Shap_summary_bar.png',dpi=200)
+# axes[0,1].set_xlabel('FPR')
+# axes[0,1].set_ylabel('Recall')
+# axes[0,1].legend(loc='lower right', fontsize='small')
+# axes[0,1].set_title('ROC NEWS')
 
 
 
+# print('ap NEWS:', aps_NEWS,' \n mean:',np.mean(aps_NEWS), ' \n std:', np.std(aps_NEWS))
+# print('ap Model:', aps_model,' \n mean:',np.mean(aps_model), ' \n std:', np.std(aps_model))
+# print('auc NEWS:', aucs_NEWS,' \n mean:',np.mean(aucs_NEWS), ' \n std:', np.std(aucs_NEWS))
+# print('auc Model:', aucs_model,' \n mean:',np.mean(aucs_model), ' \n std:', np.std(aucs_model))
 
-#%%
+    
 
-# parchure.Prepare(random.randint(0, 100),val_share=val_share) # Train / val  / test split and normalization
-
-# parchure.Build_feature_vectors(1,pred_window,gap,int_neg,int_pos,feature_window,str(model)+'_'+str(n_features),freq=freq,time=time) 
-# # parchure.Balance(undersampling=True)
-
-# w = parchure.Optimize()
-# parchure.Train(w,model=model,balance=False)
-
-# auc,ap,tn, fp, fn, tp = parchure.Evaluate(feature_window,2)
-
-#%% load data
+# # ------------- Model ----------------------
+# precision, recall, thresholds = precision_recall_curve(y_real_full, y_proba_full)
+# lab = 'Overall AP=%.4f' % np.round(average_precision_score(y_real_full, y_proba_full),3)
+# axes[1,0].step(recall, precision, label=lab, lw=2, color='black')
 
 
-# #Saved direcertory
-# d = 'saved_model_08_01'
+# axes[1,0].set_xlabel('Recall')
+# axes[1,0].set_ylabel('Precision')
+# axes[1,0].legend(loc='upper right', fontsize='small')
+# axes[1,0].set_title('PR-curve Model')
 
-# import pickle
-# with open(d+'/trained_model.sav', 'rb') as file:
-#     clf_best = pickle.load(file)
-# with open(d +'/explainer_best.sav', 'rb') as file:
-#     explainer_best = pickle.load(file)
+# fpr, tpr, _ = metrics.roc_curve(y_real_full, y_proba_full)
+# auc = metrics.auc(fpr, tpr)
+# lab = 'Overall AUC=%.4f' % np.round(auc,3)
+# axes[1,1].step(fpr, tpr, label=lab, lw=2, color='black')
 
-# with open(d +'/imputer_best.sav', 'rb') as file:
-#     imputer_best = pickle.load(file)
-# with open(d +'/imputer_raw_best.sav', 'rb') as file:
-#     imputer_raw_best = pickle.load(file)
-
-# type_lib = {'ID':str,
-#                 'VARIABLE':str,
-#                 'TIME': str,
-#                 'VALUE': float,
-#                 'DEPARTMENT':str,
-#                 'AGE':float,
-#                 'BMI':float,
-                
-#                 }
+# axes[1,1].set_xlabel('FPR')
+# axes[1,1].set_ylabel('Recall')
+# axes[1,1].legend(loc='lower right', fontsize='small')
+# axes[1,1].set_title('ROC Model')
 
 
-# df_val_best = pd.read_csv(d+'/df_val_best.csv',index_col=False,dtype = type_lib)
-# df_val_best = df_val_best.drop(df_val_best.columns[0], axis=1)
-
-# median_best = pd.read_csv(d +'/median_best.csv',index_col=False,dtype = type_lib)
-# median_best = median_best.drop(median_best.columns[0], axis=1)
-# median_best = np.asarray(median_best)
-
-# df_demo_val_best = pd.read_csv(d +'/df_demo_val_best.csv',index_col=False,dtype = type_lib)
-# df_demo_val_best = df_demo_val_best.drop(df_demo_val_best.columns[0], axis=1)
-
-# demo_median_best = pd.read_csv(d +'/demo_median_best.csv',index_col=False,dtype = type_lib)
-# demo_median_best = demo_median_best.drop(demo_median_best.columns[0], axis=1)
-# demo_median_best = np.asarray(demo_median_best)
-
-# df_val_raw_best = pd.read_csv(d +'/df_val_raw_best.csv',index_col=False,dtype = type_lib)
-# df_val_raw_best = df_val_raw_best.drop(df_val_raw_best.columns[0], axis=1)
-
-# median_raw_best = pd.read_csv(d +'/median_raw_best.csv',index_col=False,dtype = type_lib)
-# median_raw_best = median_raw_best.drop(median_raw_best.columns[0], axis=1)
-# median_raw_best = np.asarray(median_raw_best)
-
-# df_demo_val_raw_best = pd.read_csv(d +'/df_demo_val_raw_best.csv',index_col=False,dtype = type_lib)
-# df_demo_val_raw_best = df_demo_val_raw_best.drop(df_demo_val_raw_best.columns[0], axis=1)
-
-# demo_median_raw_best = pd.read_csv(d +'/demo_median_raw_best.csv',index_col=False,dtype = type_lib)
-# demo_median_raw_best = demo_median_raw_best.drop(demo_median_raw_best.columns[0], axis=1)
-# demo_median_raw_best = np.asarray(demo_median_raw_best)
-
-# date_format='%Y-%m-%d %H:%M:%S'
-
-# df_val_best['TIME'] = pd.to_datetime(df_val_best['TIME'],format = date_format)
-# df_val_raw_best['TIME'] = pd.to_datetime(df_val_raw_best['TIME'],format = date_format)
+# f.tight_layout()
+# if save_model:
+#     f.savefig(save_results_dir+'/result.png',dpi=300)
 
 
-
-#%% Proof of concept
-
-# from functions import *
-# from classes import *
+# print('----- best fold random seed:',random_state_best)
+# print(total_features)
 
 
-# X_val_pos = parchure.Proof_of_concept(clf_best,explainer_best,imputer_best,imputer_raw_best,
-#                                         df_val_best,median_best,df_demo_val_best,demo_median_best,
-#                                         df_val_raw_best,median_raw_best,df_demo_val_raw_best,demo_median_raw_best,
-#                                         t_best,1,'pos',plot=False)
-
-# X_val_neg = parchure.Proof_of_concept(clf_best,explainer_best,imputer_best,imputer_raw_best,
-#                                         df_val_best,median_best,df_demo_val_best,demo_median_best,
-#                                         df_val_raw_best,median_raw_best,df_demo_val_raw_best,demo_median_raw_best,
-#                                         t_best,1,'neg',plot=False)
-
-# X_val_tot = np.concatenate([X_val_pos,X_val_neg],axis=0)
-
-# parchure.Global_Feature_importance(X_val_tot,explainer_best,clf_best)
-
-# X_val_pos = parchure.Proof_of_concept(clf_best,explainer_best,imputer_best,imputer_raw_best,
-#                                         df_val_best,median_best,df_demo_val_best,demo_median_best,
-#                                         df_val_raw_best,median_raw_best,df_demo_val_raw_best,demo_median_raw_best,
-#                                         t_best,1,'pos',plot=True)
-
-# X_val_neg = parchure.Proof_of_concept(clf_best,explainer_best,imputer_best,imputer_raw_best,
-#                                         df_val_best,median_best,df_demo_val_best,demo_median_best,
-#                                         df_val_raw_best,median_raw_best,df_demo_val_raw_best,demo_median_raw_best,
-#                                         t_best,1,'neg',plot=True)
-
+# if model != 'LR':
+#     import shap
+#     from matplotlib import cm
+#     from matplotlib.colors import ListedColormap, LinearSegmentedColormap
+#     newcmp = plt.get_cmap('cool')
+#     plt.figure()
+    
+#     shap.summary_plot(shap_values_tot, features=X_val_tot, feature_names=total_features,plot_type='dot',show=False,max_display=25)
+#     for fc in plt.gcf().get_children():
+#         for fcc in fc.get_children():
+#             if hasattr(fcc, "set_cmap"):
+#                 fcc.set_cmap(newcmp)
+#     plt.tight_layout()
+#     plt.savefig(save_results_dir+'/Shap_summary_violin_full.png',dpi=200)
+    
+    
+#     plt.figure()
+#     shap.summary_plot(shap_values_tot, features=X_val_tot, feature_names=total_features,plot_type='bar',show=False,max_display=15)
+#     plt.tight_layout()
+#     plt.savefig(save_results_dir+'/Shap_summary_bar.png',dpi=200)
+    
+#     plt.figure()
+#     sorted_idx = clf_best.feature_importances_.argsort()
+#     plt.barh(np.asarray(total_features)[sorted_idx][-15:], clf.feature_importances_[sorted_idx][-15:])
+#     plt.xlabel("Random Forest Feature Importance")
+#     plt.tight_layout()
+#     plt.savefig(save_results_dir+'/Gini_importance.png',dpi=200)
+    
