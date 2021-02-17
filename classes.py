@@ -2,17 +2,23 @@
 """
 Created on Thu Nov  5 09:43:59 2020
 
-@author: 31643
+@author: Jim Smit
+
+ICU_model CLass
+
 """
+
+# import libraries
 import pandas as pd
 import random
 import numpy as np
 import matplotlib.pyplot as plt
 
+#import functions
 from functions import *
 
 
-class Parchure:
+class ICU_model:
     def __init__(self):
 
         self.df_lab = pd.DataFrame
@@ -46,122 +52,123 @@ class Parchure:
         self.df_cci = pd.DataFrame
         self.clf_NEWS = None
     
-    def import_cci(self,inputs):
+    def import_cci(self,inputs):  # file with No ICU policy information
         self.df_cci = importer_cci(inputs[2])
-    def import_pacmed(self,features):
-        self.features = features
-        self.df,self.df_episodes = importer_pacmed(self.features)        
+       
+    def import_MAASSTAD(self,inputs,encoders,specs): # Load Maasstad file
+        self.specs = specs
+        self.df_imported,df_vitals = importer_MAASSTAD(inputs[3],encoders[1],',',0,self.specs)
+        return self.df_imported,df_vitals
     
-    def import_MAASSTAD(self,inputs,encoders,specs):
-        self.specs = specs
-        self.df_imported = importer_MAASSTAD(inputs[3],encoders[1],',',0,self.specs)
-        return self.df_imported
-        
-    def import_labs(self,inputs,encoders,specs):
-        self.specs = specs
-        self.df_lab,self.dict_unit = importer_labs(inputs[0],encoders[1],';',0,self.specs,filter=True)
-        
-        return self.df_lab, self.dict_unit
-    def clean_labs(self):
-        self.df_lab = cleaner_labs(self.df_lab)
-        
-    def import_vitals(self,inputs,encoders):
-        self.df_vitals = importer_vitals(inputs[1],encoders[1],';',0)
-        
-    def clean_vitals(self):
-        self.df_vitals = cleaner_vitals(self.df_vitals)
-        
-    def clean_MAASSTAD(self,specs):
+    def clean_MAASSTAD(self,specs): # Clean Maasstad file
         self.specs = specs
         self.df_cleaned,self.features = cleaner_MAASSTAD(self.df_imported,self.specs)
-        self.ids_IC_only, self.ids_all, self.ids_clinic, self.ids_events = get_ids(self.df_cleaned)
+        # self.ids_IC_only, self.ids_all, self.ids_clinic, self.ids_events = get_ids(self.df_cleaned)
         
         return self.features
+    
+    def import_labs(self,inputs,encoders,specs): #load Labs EMC
+        self.specs = specs
+        self.df_lab_raw,self.dict_unit = importer_labs(inputs[0],encoders[1],';',0,self.specs,filter=True)
         
-    def merge(self):
+        return self.df_lab, self.dict_unit
+    
+    def clean_labs(self,specs):  # Clean Labs EMC
+        self.specs = specs
+        self.df_lab,unique_features = cleaner_labs(self.df_lab_raw)
+        return unique_features
+    
+    def import_vitals(self,inputs,encoders): # Import vitals EMC
+        self.df_vitals_raw = importer_vitals(inputs[1],encoders[1],';',0)
+        
+    def clean_vitals(self): # clean Vitals EMC
+        self.df_vitals = cleaner_vitals(self.df_vitals_raw)
+        return self.df_vitals
+        
+    def merge(self): # Merge labs and vitals EMC
         
         self.df_cleaned,self.features = df_merger(self.df_lab,self.df_vitals,self.df_cci,self.specs)
        
-        return self.df_cleaned
-        
-        
-    def missing(self,x_days=True):
-        df_missing,n_clinic,n_event = missing(self.df,self.features,self.ids_clinic,self.ids_events,x_days=x_days)
-        
-        return df_missing,n_clinic,n_event
+        return self.df_cleaned,self.features
+         
     
-
-        
-    
-    def fix_episodes(self):
+    def fix_episodes(self): # Go from patients to patient episodes (to handle re-admissions)
         # self.df,self.ids_events = fix_episodes(self.df_cleaned)
-        self.df,self.ids_events = fix_episodes(self.df_cleaned)
+        self.df,self.ids_events = fix_episodes(self.df_cleaned,self.specs)
         self.df_demo = Demographics(self.df)
         
         return self.df,self.ids_events,self.df_demo
     
-    
-    def Build_feature_vectors(self,i,name):
-        print('TRAINING DATA')
-                   
-
+    def Build_feature_vectors(self,i,name): # transform dataframe into matrix with feature vectors
+        
         self.X,self.y,entry_dens,self.y_pat,self.y_t,y_entry_dens = prepare_feature_vectors(self.df,self.df_demo,
                                                                                    self.ids_events,self.features,self.specs)
+        
+        # get rid of infinity in X (if present)
         from numpy import inf
         self.X[np.where(self.X == np.inf)] = np.nan
         
-
-        print('PLOT ENTRY DENSITIES')
+        # transform all to floats
+        X_return  = self.X[:,:-1].astype(float)
         
-        entry_dens = pd.DataFrame(entry_dens)
-        print(entry_dens.shape)
-
-        entry_dens.columns = make_total_features(self.features,self.specs,demo=False)
         
-        plot_df = pd.DataFrame()
+        if self.specs['entry_dens']:
+            print('PLOT ENTRY DENSITIES')
+            
+            entry_dens = pd.DataFrame(entry_dens)
+            print(entry_dens.shape)
+            
+            print(make_total_features(self.features,self.specs,demo=False))
+            entry_dens.columns = make_total_features(self.features,self.specs,demo=False)
+            
+            plot_df = pd.DataFrame()
+            
+            entry_dens = entry_dens.iloc[:,:5]
+            
+            for i in entry_dens.columns:
+                df = pd.DataFrame()
+                df['entry density'] = entry_dens[i]
+                df['Variable'] = i
+                df['Label'] = 'No transfer'
+                df['Label'].loc[y_entry_dens==1] = 'Transfer'
+                plot_df = pd.concat([plot_df,df],axis=0)
+            
+            plot_df.columns = ['entry density','Variable','Label'] 
+            
+            import matplotlib.pyplot as plt
+            import seaborn as sns
+            plt.figure()
+            ax = sns.boxplot(x="Variable", y="entry density", hue = 'Label',data=plot_df,medianprops={'color':'red'})
+            plt.ylim(0,1)
+            plt.setp(ax.get_xticklabels(), rotation=90)
+            plt.legend(bbox_to_anchor=(1.05, 1), loc=2, borderaxespad=0.)
+            plt.tight_layout()
+            plt.savefig('entry_vitals_MSD',dpi=300)
         
-        entry_dens = entry_dens.iloc[:,5:14]
-        
-        for i in entry_dens.columns:
-            df = pd.DataFrame()
-            df['entry density'] = entry_dens[i]
-            df['Variable'] = i
-            df['Label'] = 'No transfer'
-            df['Label'].loc[y_entry_dens==1] = 'Transfer'
-            plot_df = pd.concat([plot_df,df],axis=0)
-        
-        plot_df.columns = ['entry density','Variable','Label'] 
-        
-        import matplotlib.pyplot as plt
-        import seaborn as sns
-        plt.figure()
-        ax = sns.boxplot(x="Variable", y="entry density", hue = 'Label',data=plot_df,medianprops={'color':'red'})
-        plt.setp(ax.get_xticklabels(), rotation=90)
-        plt.legend(bbox_to_anchor=(1.05, 1), loc=2, borderaxespad=0.)
-        plt.tight_layout()
-        plt.savefig(self.specs['save_results']+'/entry_density_EMC',dpi=300)
-        
+        # Prapere Y with label characteristics (for Utility aa=nalysis)
         Y = pd.DataFrame()
         Y['label'] = self.y
         Y['t_to_event'] = self.y_t
         Y['patient'] = self.y_pat
+        Y['ID'] = self.X[:,-1]
         
-        return self.X,entry_dens,Y
+        
+        return X_return,entry_dens,Y
     
     
-    def Train_full_model(self,model):
+    def Train_full_model(self,model,n_trees): # Train model on full dataset
         # Normalize
         self.X_norm,self.scaler = Normalize_full(self.X[:,:-1]) 
         #Imputation
+        print('start iputation with:',self.specs['imputer'])
         self.X_norm_imp,self.imputer = Imputer_full_model(self.X_norm,self.specs) 
         #Train
-        self.clf,self.explainer = train_full_model(self.X_norm_imp,self.y,model)
+        self.clf,self.explainer,auc = train_full_model(self.X_norm_imp,self.y,model,n_trees)
 
-        return self.scaler,self.imputer,self.clf,self.explainer
+        return self.scaler,self.imputer,self.clf,self.explainer,auc
             
-    def Prepare(self,random_state):
+    def Prepare(self,random_state): # Data split, normalization and imputation for internal validation
         print('start preparing dataframes')
-        
         
         self.X_train_raw,self.y_train,self.X_val_raw,self.y_val,self.y_val_pat,self.y_val_t,self.X_test_raw,self.y_test = Split(self.X,
                                                                                                 self.y,self.y_pat,self.y_t,self.ids_events,
@@ -171,7 +178,7 @@ class Parchure:
         self.X_train,self.X_val,self.X_test,self.scaler = Normalize(self.X_train_raw,self.X_val_raw, self.X_test_raw,self.specs) 
         
         #Imputation
-        
+        print('start iputation with:',self.specs['imputer'])
         self.X_train_raw,self.X_val_raw,self.X_test_raw,self.imputer_raw = Imputer(self.X_train_raw,
                                                                                            self.X_val_raw, self.X_test_raw,self.specs) 
         
@@ -181,12 +188,15 @@ class Parchure:
         return self.imputer_raw,self.imputer,self.y_val_pat,self.y_val_t,random_state,self.scaler
     
   
-
-    def Optimize_trees(self):
+    def total_feature_vector(self): # build total feature vector (feature names)
+        print('make total feature vector')
+        self.total_features = make_total_features(self.features,self.specs)
+        print(self.X_train.shape)
+        print(self.total_features.shape)
         
-        n_trees = optimize_n_trees(self.X_train,self.y_train)
+        return list(self.total_features)
         
-    def feature_selection(self,n):
+    def feature_selection(self,n): # Optional: data driven feature selection
         print('feature selection triggered')
         self.total_features = make_total_features(self.features,self.specs)
         print(self.X_train.shape)
@@ -212,17 +222,18 @@ class Parchure:
             
         return self.selector,list(self.total_features)
         
-    def Optimize(self):
+    def Optimize(self): #optimize model with standard balanced weights
         print('start optimizing with standard balanced weights')
         if self.specs['FS']:
             self.X_train = self.selector.transform(self.X_train)
             self.X_val = self.selector.transform(self.X_val)
             self.X_test = self.selector.transform(self.X_test)
         
-        self.clf,self.explainer,_,_ = train_model(self.X_train,self.y_train,self.X_test,self.y_test,self.specs['model'],n_trees=self.specs['n_trees'],class_weight='balanced')
-        return self.clf,self.explainer    
+        self.clf,self.explainer,_,_,pred_tr,y_tr = train_model(self.X_train,self.y_train,self.X_test,self.y_test,self.specs['model'],n_trees=self.specs['n_trees'],class_weight='balanced')
         
-    def Optimize_weights(self):
+        return self.clf,self.explainer,pred_tr,y_tr
+        
+    def Optimize_weights(self): # Optional: optimize class weights with gridsearch
         print('start optimizing weights')
         import matplotlib.pyplot as plt
         
@@ -262,7 +273,7 @@ class Parchure:
         
         return t_best
     
-    def Predict(self):
+    def Predict(self): # Make predictions on validation set
         
         from sklearn.metrics import precision_recall_curve
         from sklearn.metrics import average_precision_score
@@ -280,7 +291,7 @@ class Parchure:
         print('AUC on validation set:',auc)
         print('Average precision on validation set:',ap)
         # NEWS
-        X_train, X_val = build_news(self.X_train_raw,self.X_val_raw,self.specs['feature_window'],self.specs['n_demo']) 
+        X_train, X_val = build_news(self.X_train_raw,self.X_val_raw,self.specs) 
         precision_n, recall_n,fpr_n,_= results_news(X_val,self.y_val,'threshold')
         auc_n = metrics.auc(fpr_n, recall_n)
         ap_n = AP_manually(precision_n, recall_n)
@@ -291,57 +302,8 @@ class Parchure:
         
         return self.y_val,predictions,X_val,self.X_val
     
-        
-    def Evaluate(self,beta):
-
-        from sklearn.dummy import DummyClassifier
-        from sklearn.metrics import precision_recall_curve
-        from sklearn.metrics import average_precision_score
-        
-        # NEWS PERFORMANCE
-        print('NEWS:')
-        X_train, X_val = build_news(self.X_train_raw,self.X_val_raw,self.specs['feature_window'],self.specs['n_demo'])
-        precision_news, recall_news= results_news(X_val,self.y_val,'threshold')
-
-        
-        # MODEL PERFORMANCE
-        print('\n MODEL')
-        auc,ap,tn, fp, fn, tp,precision,recall,t = evaluate_metrics(self.clf,self.X_val,self.y_val,plot=True)
-        
-        # do classification with dummy classifier
-        model = DummyClassifier(strategy='stratified')
-        model.fit(self.X_train, self.y_train)
-        yhat = model.predict_proba(self.X_val)
-        naive_probs = yhat[:, 1]
-        precision_naive, recall_naive, _ = precision_recall_curve(self.y_val, naive_probs)
-        ap_naive = average_precision_score(self.y_val, naive_probs)
-        print('Naive AP:',ap_naive)
-    
-        # MAKE PR and ROC curves
-        plot_PR_curve(precision,recall,precision_news,recall_news,precision_naive, recall_naive)
-        # plot_roc_curve(self.clf, self.X_val, self.y_val,clf, X_val, y_val)
-        
-        #Model PERFORMANCE ONLY NEG PATIENTS
-        print('\n Perfromance among negatve patients')
-        mask = self.y_pat == 0
-        CM(self.clf,self.X_val[mask],self.y_val[mask],t)
-        
-        #Model PERFORMANCE ONLY POS PATIENTS
-        print('\n Perfromance among positive patients')
-        mask = self.y_pat == 1
-        CM(self.clf,self.X_val[mask],self.y_val[mask],t)
-        return auc,ap,tn, fp, fn, tp
-    
-        
-        
-    
-    def Plot_results(self,n,model):
-        # 
-        FI = plot_feature_importance(self.clf,n,model)
-        
-        return FI,self.features
-     
-    def Global_Feature_importance(self,X_val,explainer,clf):
+         
+    def Global_Feature_importance(self,X_val,explainer,clf): # make polots for global feature importance
         import shap
         from matplotlib import cm
         from matplotlib.colors import ListedColormap, LinearSegmentedColormap
@@ -416,7 +378,7 @@ class Parchure:
         
         return 
     
-    def Proof_of_concept(self,clf,explainer,imputer,imputer_raw,
+    def Proof_of_concept(self,clf,explainer,imputer,imputer_raw,  # Make dynamic plots for local feature importance / predicions
                          df_val,median,df_demo_val,demo_median,
                          df_val_raw,median_raw,df_demo_val_raw,demo_median_raw,
                          t,inc_start,label,plot=True):

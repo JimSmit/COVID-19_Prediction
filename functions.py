@@ -2,7 +2,11 @@
 """
 Created on Wed Aug 19 11:23:05 2020
 
-@author: 777018
+@author: Jim Smit
+
+Functions
+
+
 """
 
 # Import necessary libraries
@@ -16,7 +20,12 @@ import sys
 np.set_printoptions(threshold=sys.maxsize)
 
 
+
 def importer_cci(file):
+    """ 
+    Function to impuate file with No-ICU policy information
+    
+    """ 
     df = pd.read_excel(file, header=0)
     
     type_lib = {
@@ -30,262 +39,48 @@ def importer_cci(file):
     
     return df
 
-def importer_pacmed(features,specs):
-    from data_warehouse_utils.dataloader import DataLoader
-    dl = DataLoader()
 
-    #find common parameters
-    patients = dl.get_episodes()
-    
-    
-    
-    B = dl.get_single_timestamp(
-                                parameters=features,
-    #                             hospitals = ['franciscus']
-                                columns = list(['hash_patient_id','pacmed_name','effective_timestamp','numerical_value','is_correct_unit_yn','unit_name'])
-                               )
-
-    # filter those with double episodes    
-    idxs = []
-    for idx in np.unique(patients.hash_patient_id):
-        if len(np.unique(patients[patients['hash_patient_id']==idx]['episode_id']))>1:
-            idxs.append(idx)
-    idxs = np.asarray(idxs)
-    print('N patients withg double episode to be filtered:', len(idxs))
-    mask = patients['hash_patient_id'].isin(idxs)
-    patients = patients[~mask]
-    
-    
-    A = patients
-    print(A.shape)
-    # first filter transfer and still_admitted patients
-    mask = A['outcome']=='transfer' 
-    A = A[~mask]
-    print(A.shape)
-    mask = A['outcome']=='still_admitted' 
-    A = A[~mask]
-    print(A.shape)
-    
-    # for positive group, keep only those in 'icu_mortality', not in 'mortality'
-    pos = A.copy()
-    mask = pos['icu_mortality']
-    pos = pos[mask]
-    
-    #filter those for which last discharge timestamp and death timestamp do not match
-    mask = abs((pos['death_timestamp'] - pos['discharge_timestamp']).dt.days) >1
-    pos = pos[~mask]
-    
-    
-    #keep only informative columns:
-    pos = pos[['hash_patient_id','age','bmi','gender','discharge_timestamp','icu_mortality']]
-    print(pos.shape)
-    
-    # for negative group, only keep 'survivors'
-    neg = A.copy()
-    mask = neg['outcome'] == 'survivor'
-    neg = neg[mask]
-    
-    neg = neg[['hash_patient_id','age','bmi','gender','discharge_timestamp','icu_mortality']]
-    print(neg.shape)
-    
-    full = pd.concat([pos,neg],axis=0)
-    full.columns = ['ID','AGE','BMI','SEX','t_event','mortality']
-    print(full.shape)
-    
-    ## Filter B matrix
-    
-    print(B.shape)
-    
-    # Keep only those which ID is also present in A table (otherwhise no label available)
-    mask = B['hash_patient_id'].isin(full['ID'].values)
-    B = B[mask]
-    print('after removing data points without label available',B.shape)
-    
-    #filter those without non-numerical value
-    mask  = B.numerical_value.isnull()
-    B = B[~mask]
-    print('After removing those without numerical value',B.shape)
-    
-    
-    # remove those without validated unit
-    B.loc[B['is_correct_unit_yn'].isna(), ['is_correct_unit_yn']] = True
-    mask = B['is_correct_unit_yn']
-    B = B[mask]
-    print('After removing unvalidated units:',B.shape)
-    
-    # remove rows for which no timestamp is available
-    mask = B['effective_timestamp'].isnull()
-    B = B[~mask]
-    print('After removing unavailable dates:',B.shape)
-    
-    # ---- Make Unit dictionary ---------
-    units_vitals = list(['[%]','[bpm]','[mmHg]','[/min]','[°C]'])
-    units = []
-    all_units = list(features)
-    
-    for i in all_units:
-        snip = B[B['pacmed_name']==i].reset_index(drop=True)['unit_name'].dropna()
-        if snip.shape[0] > 0:
-            units.append('[' + snip[0] + ']')
-        else:
-            units.append(' ')
-    
-    dict_units = dict(zip(all_units, units))
-    
-    all_units = np.asarray(all_units)
-    
-    if specs['freq']:
-        new_features = []
-        for i in all_units:
-            new_features.append(i+str('_freq'))
-        dict_units.update(dict(zip(new_features, list(['[/h]'])*len(new_features))))    
-        
-        new_features = []
-        for i in ['SpO2','HR','BP','RR','Temp']:
-            new_features.append(i+str('_freq'))
-        dict_units.update(dict(zip(new_features, list(['[/h]'])*len(new_features))))    
-        
-            
-    if specs['inter']:
-        new_features = []
-        for i in all_units:
-            new_features.append(i+str('_inter'))
-        dict_units.update(dict(zip(new_features, list(['[hrs]'])*len(new_features))))    
-        
-        new_features = []
-        for i in ['SpO2','HR','BP','RR','Temp']:
-            new_features.append(i+str('_inter'))
-        dict_units.update(dict(zip(new_features, list(['[hrs]'])*len(new_features))))    
-        
-    if specs['diff']:
-        new_features = []
-        for i in all_units:
-            new_features.append(i+str('_diff'))
-        dict_units.update(dict(zip(new_features, units)))    
-        
-        new_features = []
-        for i in ['SpO2','HR','BP','RR','Temp']:
-            new_features.append(i+str('_diff'))
-        dict_units.update(dict(zip(new_features, units_vitals)))    
-        
-    if specs['stats']:
-        
-        stats = ['_max','_min','_mean','_median','_std','_diff_std']
-        for stat in stats:
-            new_features = []
-            for i in ['SpO2','HR','BP','RR']:
-                new_features.append(i+stat)
-                dict_units.update(dict(zip(new_features, units_vitals[:-1])))    
-    
-    # default_data.update({'item3': 3})
-    
-    dict_units.update({'BMI':''})
-    dict_units.update({'AGE':'[yrs]'})
-    dict_units.update({'SEX':'[yrs]'})
-    dict_units.update({'SpO2':'[%]'})
-    dict_units.update({'HR':'[bpm]'})
-    dict_units.update({'BP':'[mmHg]'})
-    dict_units.update({'RR':'[/min]'})
-    dict_units.update({'Temp':'[°C]'})
-    dict_units.update({'LOS':'[hrs]'})
-    
-    
-    # get rid of non-informative columns, transform datatypes
-    B = B[['hash_patient_id','pacmed_name','effective_timestamp','numerical_value']]
-    type_lib = {
-                    'hash_patient_id': 'category',
-                    'pacmed_name':'category',
-                    'effective_timestamp':np.datetime64,
-    #                 'numerical_value':np.float16,
-                    }
-    B = B.astype(type_lib)
-    
-    #import vitals and merge with B:
-    vitals = pd.read_csv("../vitals_update_sliding.csv", index_col=0)
-    
-    vitals.columns = ['ID','VAR','TIME','VAL']
-    
-    #filter those without non-numerical value
-    mask  = vitals.VAL.isnull()
-    vitals = vitals[~mask]
-    print('After removing those without numerical value',vitals.shape)
-        
-    # remove rows for which no timestamp is available
-    mask = vitals['TIME'].isnull()
-    vitals = vitals[~mask]
-    print('After removing unavailable dates:',vitals.shape)
-    
-    B.columns = ['ID','VARIABLE','TIME','VALUE']
-    vitals.columns = ['ID','VARIABLE','TIME','VALUE']
-    B_full = pd.concat([B,vitals],axis=0)
-    
-    
-    B_full.columns = ['ID','VARIABLE','TIME','VALUE']
-    print('IDS in single timestamp:', len(np.unique(B_full.ID)))
-    print('IDS in episodes:', len(np.unique(full.ID)))
-    
-    ids = np.unique(full.ID)
-    mask = B_full['ID'].isin(ids)
-    B_full = B_full[mask]
-    
-    print('IDS in single timestamp after removing still admitted and transfer:', len(np.unique(B_full.ID)))
-    
-    ids = np.unique(B_full.ID)
-    mask = full['ID'].isin(ids)
-    full = full[mask]
-    
-    
-    
-    assert len(np.unique(B_full.ID)) == len(np.unique(full.ID))
-    print(B_full.info())
-    
-    
-    
-    
-    return B_full, full,dict_units
     
 def importer_labs(file,encoding,sep,header,specs,labs=True,filter=True,nrows=None,skiprows=None,skipinitialspace=False):
-    """Import labs data.
+    """
+    Import labs data.
 
-        Parameters
-        ----------
-        file : [str]
-            `hash_patient_id`s of patients to query.
-        columns : Optional[List[str]]
-            List of columns to return.
+    Parameters
+    ----------
+    file : [str]
+        `hash_patient_id`s of patients to query.
+    columns : Optional[List[str]]
+        List of columns to return.
 
-        Returns
-        -------
-        type : pd.DataFrame
-        """
+    Returns
+    -------
+    data       type : pd.DataFrame
+    dict_units type : dict
+    
+    """
 
 
     print('importer labs triggered')
-    if labs:
-        col_list = ['PATIENTNR','OMSCHRIJVING','BMI','LEEFTIJD',
-                    'OPNAMEDATUM','ONTSLAGDATUM','HERKOMST',
-                    'BESTEMMING',
-                'DOSSIER_BEGINDATUM','DOSSIER_EINDDATUM',
-                'OPNAMETYPE','AFNAMEDATUM','DESC','UITSLAG','UNIT'
-                ]
+    
+    col_list = ['PATIENTNR','SEX','OMSCHRIJVING','BMI','LEEFTIJD',
+                'OPNAMEDATUM','ONTSLAGDATUM','HERKOMST',
+                'BESTEMMING',
+            'DOSSIER_BEGINDATUM','DOSSIER_EINDDATUM',
+            'OPNAMETYPE','AFNAMEDATUM','DESC','UITSLAG','UNIT'
+            ]
 
-    else:
-
-            col_list = ['PATIENTNR', 'MEETMOMENT',  'METINGTYPELABEL','VOLGNUMMER',
-            'Data1', 'Data2', 'Data3', 'INVOERMOMENT',
-            'METINGCATEGORIE']
     if filter:
         usecols = [0,1,2,3,
-                    4,5,7,
-                   9,
-                    10,11,
-                   13,14,17,18,19]
+                    4,5,6,8,
+                   10,11,12,
+                   14,15,18,19,20]
     else:
         usecols = None
     
     type_lib = {
-                'PATIENTNR':str,
+                'SUBJECTNR':str,
                 'OMSCHRIJVING':'category',
+                'GESLACHT':str,
                 'BMI':str,
                 # 'LEEFTIJD': int,
                 'OPNAMEDATUM':str,
@@ -297,13 +92,13 @@ def importer_labs(file,encoding,sep,header,specs,labs=True,filter=True,nrows=Non
                 'OPNAMETYPE':'category',
                 'AFNAMEDATUM':str,
                 'DESC':'category',
-                'UNIT':str,
+                'EENHEID':str,
                 # 'UITSLAGDATUM':str,
                 # 'RESERVE':str,
                 
                 }
-    
-    data =  pd.read_csv(file,
+ 
+    data =  pd.read_excel(file,
                         # engine='python',
                         sep=sep,
                         # lineterminator='\r',
@@ -322,6 +117,7 @@ def importer_labs(file,encoding,sep,header,specs,labs=True,filter=True,nrows=Non
       )
 
     print('Lab Data imported')
+    print(data.columns)
     # print()
 
     # Make DF with unique labs and corresponding units
@@ -329,13 +125,24 @@ def importer_labs(file,encoding,sep,header,specs,labs=True,filter=True,nrows=Non
 
     
     
-    if filter:
-        data.columns = col_list
-    else: 
-        data = data[col_list]
+    col_list = ['SUBJECTNR','GESLACHT','OMSCHRIJVING','BMI','LEEFTIJD',
+                    'OPNAMEDATUM','ONTSLAGDATUM','HERKOMST',
+                    'BESTEMMING',
+                'DOSSIER_BEGINDATUM','DOSSIER_EINDDATUM',
+                'OPNAMETYPE','AFNAMEDATUM','DESC','UITSLAG','EENHEID'
+                ]
+    data = data[col_list]
     
     data = data.astype(type_lib)
+    data.columns = ['PATIENTNR','SEX','OMSCHRIJVING','BMI','LEEFTIJD',
+                    'OPNAMEDATUM','ONTSLAGDATUM','HERKOMST',
+                    'BESTEMMING',
+                'DOSSIER_BEGINDATUM','DOSSIER_EINDDATUM',
+                'OPNAMETYPE','AFNAMEDATUM','DESC','UITSLAG','UNIT'
+                ]
      
+    
+    
     # ---- Make Unit dictionary ---------
     units_vitals = list(['[%]','[bpm]','[mmHg]','[/min]','[°C]'])
     units = []
@@ -411,33 +218,79 @@ def importer_labs(file,encoding,sep,header,specs,labs=True,filter=True,nrows=Non
 
     return data, dict_units
 
+
+def importer_vitals(file,encoding,sep,header,):
+    print('importer vitals triggered')
+    extract = [0,2,6,8,9,10,11,12,14]
+    # PATIENTNR,SUBJECTNR
+    col_list = ['SUBJECTNR','OMSCHRIJVING', 'MEETMOMENT', 'METINGTYPELABEL',
+    'Data1', 'Data2', 'Data3','Eenheid', 'METINGCATEGORIE']
+    
+    new_cols = ['PATIENTNR','OMSCHRIJVING', 'AFNAMEDATUM', 'DESC',
+    'UITSLAG', 'Data2', 'Data3', 'UNIT','OPNAMETYPE']
+    
+    type_lib = {'SUBJECTNR':str,
+                'OMSCHRIJVING':'category',
+                'MEETMOMENT': str,
+                'METINGTYPELABEL': 'category',
+                'Data1':str,
+                'Data2':str,
+                'Data3':str,
+                'Eenheid':str,
+                'METINGCATEGORIE': 'category'
+                
+                }
+    
+    data =  pd.read_excel(file,
+                        # engine='python',
+                        sep=sep,
+                        # lineterminator='\r',
+                        # error_bad_lines=False,
+                        # warn_bad_lines=True,
+                        encoding=encoding,
+                          index_col=False,
+                         # sheet_name = 'Sheet1',
+                            header=header,
+                            # usecols = usecols,
+                            dtype=type_lib,
+                            # nrows = nrows,
+                            # skiprows=skiprows,
+                            # skipinitialspace=skipinitialspace
+                            # delim_whitespace=True
+      )
+    data=data[col_list]
+    print('Vitals Data imported')
+
+    data.columns = col_list
+    data = data.astype(type_lib)
+    data.columns = new_cols
+    print('UNIQUE IDs vitals data:', len(np.unique(data['PATIENTNR'])))
+    return data
+
+
 def importer_MAASSTAD(file,encoding,sep,header,specs):
-    """Import labs data.
+    """
+    Import MAASSTAD data.
 
-        Parameters
-        ----------
-        file : [str]
-            `hash_patient_id`s of patients to query.
-        columns : Optional[List[str]]
-            List of columns to return.
+    Returns
+    -------
+    data_tot     type : pd.DataFrame
+    data_vitals    type : pd.DataFrame
+    
+    """
 
-        Returns
-        -------
-        type : pd.DataFrame
-        """
-
-    print('updated')
     print('importer MAASSTAD triggered')
     
 
     
-    usecols = ['Patientnummer','Leeftijd','BMI','ICOpname','Opnamedatum','Ontslagdatum','Bestemming','Opnametype',
+    usecols = ['Patientnummer','Leeftijd','Geslacht','BMI','ICOpname','Opnamedatum','Ontslagdatum','Bestemming','Opnametype',
                 'Ingangstijd','Eindtijd','Afnamedatum','Bepalingomschrijving_kort','Uitslag','Eenheid']
                 
     type_lib = {
                 'Patientnummer':'category',
                 'Leeftijd':int,
                 'BMI':float,
+                'Geslacht':str,
                 # 'LEEFTIJD': int,
                 'Behandelbeperking ICOpname':'category',
                 'Opnamedatum': str,
@@ -470,7 +323,7 @@ def importer_MAASSTAD(file,encoding,sep,header,specs):
       
     print(data.columns)
     print(data.shape)
-    new_cols = ['PATIENTNR','LEEFTIJD','BMI','NOICU','OPNAMEDATUM','ONTSLAGDATUM','BESTEMMING','OPNAMETYPE','DOSSIER_BEGINDATUM',
+    new_cols = ['PATIENTNR','LEEFTIJD','SEX','BMI','NOICU','OPNAMEDATUM','ONTSLAGDATUM','BESTEMMING','OPNAMETYPE','DOSSIER_BEGINDATUM',
                     'DOSSIER_EINDDATUM','AFNAMEDATUM','DESC','UITSLAG','UNIT' ]
     print(len(new_cols))
     data.columns = new_cols
@@ -529,134 +382,21 @@ def importer_MAASSTAD(file,encoding,sep,header,specs):
     data_tot = pd.concat([data,data_vitals],axis=0)
     
     print('total data shape:',data_tot.shape)
-    # # ---- Make Unit dictionary ---------
-    # units_vitals = list(['[%]','[bpm]','[mmHg]','[/min]','[°C]'])
-    # units = []
-    # all_units = list(data['DESC'].unique())
-    
-    # for i in all_units:
-    #     snip = data[data['DESC']==i].reset_index(drop=True)['UNIT'].dropna()
-    #     if snip.shape[0] > 0:
-    #         units.append('[' + snip[0] + ']')
-    #     else:
-    #         units.append(' ')
-    
-    # dict_units = dict(zip(all_units, units))
-    
-    # all_units = np.asarray(all_units)
-    
-    # if specs['freq']:
-    #     new_features = []
-    #     for i in all_units:
-    #         new_features.append(i+str('_freq'))
-    #     dict_units.update(dict(zip(new_features, list(['[/h]'])*len(new_features))))    
-        
-    #     new_features = []
-    #     for i in ['SpO2','HR','BP','RR','Temp']:
-    #         new_features.append(i+str('_freq'))
-    #     dict_units.update(dict(zip(new_features, list(['[/h]'])*len(new_features))))    
-        
-            
-    # if specs['inter']:
-    #     new_features = []
-    #     for i in all_units:
-    #         new_features.append(i+str('_inter'))
-    #     dict_units.update(dict(zip(new_features, list(['[hrs]'])*len(new_features))))    
-        
-    #     new_features = []
-    #     for i in ['SpO2','HR','BP','RR','Temp']:
-    #         new_features.append(i+str('_inter'))
-    #     dict_units.update(dict(zip(new_features, list(['[hrs]'])*len(new_features))))    
-        
-    # if specs['diff']:
-    #     new_features = []
-    #     for i in all_units:
-    #         new_features.append(i+str('_diff'))
-    #     dict_units.update(dict(zip(new_features, units)))    
-        
-    #     new_features = []
-    #     for i in ['SpO2','HR','BP','RR','Temp']:
-    #         new_features.append(i+str('_diff'))
-    #     dict_units.update(dict(zip(new_features, units_vitals)))    
-        
-    # if specs['stats']:
-        
-    #     stats = ['_max','_min','_mean','_median','_std','_diff_std']
-    #     for stat in stats:
-    #         new_features = []
-    #         for i in ['SpO2','HR','BP','RR']:
-    #             new_features.append(i+stat)
-    #             dict_units.update(dict(zip(new_features, units_vitals[:-1])))    
-    
-    # # default_data.update({'item3': 3})
-    
-    # dict_units.update({'BMI':''})
-    # dict_units.update({'AGE':'[yrs]'})
-    # dict_units.update({'SpO2':'[%]'})
-    # dict_units.update({'HR':'[bpm]'})
-    # dict_units.update({'BP':'[mmHg]'})
-    # dict_units.update({'RR':'[/min]'})
-    # dict_units.update({'Temp':'[°C]'})
-    # dict_units.update({'LOS':'[hrs]'})
-    
-    
-    
 
-    return data_tot
+    
+    return data_tot,data_vitals
 
-def importer_vitals(file,encoding,sep,header,):
-    print('importer vitals triggered')
-    extract = [0,1,5,7,8,9,10,11,13]
-    # PATIENTNR,SUBJECTNR
-    col_list = ['SUBJECTNR','OMSCHRIJVING', 'MEETMOMENT', 'METINGTYPELABEL',
-    'Data1', 'Data2', 'Data3','Eenheid', 'METINGCATEGORIE']
-    
-    new_cols = ['PATIENTNR','OMSCHRIJVING', 'AFNAMEDATUM', 'DESC',
-    'UITSLAG', 'Data2', 'Data3', 'UNIT','OPNAMETYPE']
-    
-    type_lib = {'SUBJECTNR':str,
-                'OMSCHRIJVING':'category',
-                'MEETMOMENT': str,
-                'METINGTYPELABEL': 'category',
-                'Data1':str,
-                'Data2':str,
-                'Data3':str,
-                'Eenheid':str,
-                'METINGCATEGORIE': 'category'
-                
-                }
-    
-    data =  pd.read_csv(file,
-                        # engine='python',
-                        sep=sep,
-                        # lineterminator='\r',
-                        # error_bad_lines=False,
-                        # warn_bad_lines=True,
-                        encoding=encoding,
-                          index_col=False,
-                         # sheet_name = 'Sheet1',
-                            header=header,
-                            # usecols = usecols,
-                            dtype=type_lib,
-                            # nrows = nrows,
-                            # skiprows=skiprows,
-                            # skipinitialspace=skipinitialspace
-                            # delim_whitespace=True
-      )
-    data=data[col_list]
-    print('Vitals Data imported')
 
-    data.columns = col_list
-    data = data.astype(type_lib)
-    data.columns = new_cols
-    print('UNIQUE IDs vitals data:', len(np.unique(data['PATIENTNR'])))
-    return data
 
 
 def cleaner_MAASSTAD(data,specs):
     
     print(len(data.PATIENTNR.unique()),' unique patients at start')
     
+    #SEX
+    data.loc[data['SEX']=='M','SEX'] = 1
+    data.loc[data['SEX']=='V','SEX'] = 0
+    print('unique sexes in dataset:',data.SEX.unique())
     
     mask = data.UITSLAG.isna()
     data=data[~mask]
@@ -723,19 +463,6 @@ def cleaner_MAASSTAD(data,specs):
     mask = data['OPNAMETYPE'].isna()
     print('number of unknown OPNAMETYPE:',sum(mask))
     
-
-    print('Bestemmingen:')
-    print(data.BESTEMMING.value_counts())
-    
-    a = list()
-    for i in data.PATIENTNR.unique():
-        ex = data[data.PATIENTNR == i].reset_index(drop=True)
-        if (ex[ex.OPNAMETYPE == 'IC'].shape[0]==0) & ((ex.BESTEMMING[0] == 'Ander ziekenhuis') | (ex.BESTEMMING[0] == 'Onbekend')| (ex.BESTEMMING[0] == 'Ziekenhuis buitenland')):
-            a.append(i)
-    print(len(a),' Transfer patients to be filtered')
-    mask = data.PATIENTNR.isin(a)
-    data = data[~mask]
-    
     # print('Most frequent variables: \n',data.DESC.value_counts()[40:80])
     
     print('----Feature selection-----')
@@ -743,7 +470,7 @@ def cleaner_MAASSTAD(data,specs):
     features = ['Kreatinine','Natrium','Hemoglobine','RDW','MCV','Kalium','Trombocyten','Leucocyten',
              'CRP','LD','ALAT','ASAT','Ferritine',"Lymfocyten absoluut",'Lymfocyten',"Basofielen granulocyten absoluut","Basofiele granulocyten"]
     
-    features_vitals = ['SpO2','HR','NIBP','Resp','Temp']
+    features_vitals = ['SpO2','HR','NIBP','Resp','Temp','FiO2']
     #merge features labs and vitals
     features = np.concatenate((features_vitals,features))
     
@@ -764,14 +491,17 @@ def cleaner_MAASSTAD(data,specs):
     
     # Manual Feature selection
     features = [
-        'Hemoglobine','RDW','MCV',
-        'Leukocyten',
-              'CRP','LD','ALAT (GPT)','ASAT (GOT)','Ferritine'
+        # 'Hemoglobine',
+        'RDW',
+        # 'MCV',
+        # 'Leukocyten',
+              'CRP','LD',
+               'ALAT (GPT)','ASAT (GOT)','Ferritine'
               ]
     # features =  ['Kreatinine','Natrium','Hemoglobine','RDW','MCV','Kalium','Trombocyten','Leukocyten',
     #           'CRP','LD','ALAT (GPT)','ASAT (GOT)','Ferritine',"Lymfo's abs",'Lymfocyten',"Baso's abs","Baso's"]
     
-    features_vitals = ['SpO2','HR','BP','RR','Temp']
+    features_vitals = ['SpO2','HR','BP','RR','Temp','FiO2']
     #merge features labs and vitals
     features = np.concatenate((features_vitals,features))
     
@@ -791,11 +521,11 @@ def cleaner_MAASSTAD(data,specs):
     mask = data.PATIENTNR.isin(ids)
     data  = data[~mask]
     
-    col_list = ['PATIENTNR','BMI','LEEFTIJD',
+    col_list = ['PATIENTNR','BMI','LEEFTIJD','SEX',
             'OPNAMETYPE','AFNAMEDATUM','DESC','UITSLAG','OPNAMEDATUM','ONTSLAGDATUM','DOSSIER_BEGINDATUM','DOSSIER_EINDDATUM','BESTEMMING']
     data = data[col_list]
 
-    data.columns = ['ID','BMI','AGE',
+    data.columns = ['ID','BMI','AGE','SEX',
             'DEPARTMENT','TIME','VARIABLE','VALUE','ADMISSION','DISCHARGE','START','END','DEST']
     
     
@@ -809,7 +539,11 @@ def cleaner_labs(data):
     print('cleaner labs triggered')
     data.info()
     
-
+    #SEX
+    data.loc[data['SEX']=='M','SEX'] = 1
+    data.loc[data['SEX']=='V','SEX'] = 0
+    print('unique sexes in dataset:',data.SEX.unique())
+    
     #BMI
     data['BMI'] = data['BMI'].apply(lambda x: x.replace(',','.'))
     data['BMI'] = data['BMI'].astype(float)
@@ -848,6 +582,8 @@ def cleaner_labs(data):
                 }
     data = data.astype(type_lib)
     
+
+    
     #clean PATIENTNR
 
     data.loc[:,'PATIENTNR'] = data['PATIENTNR'].str.replace('sub', '', regex=True)
@@ -864,8 +600,9 @@ def cleaner_labs(data):
     data = data[data['UITSLAG'].notna()]
     print(data.shape)
     # trasform UITSLAG in floats
-    data['UITSLAG'].astype(float)       
-    data['UITSLAG'].astype(int)
+    data = data.astype({"UITSLAG": float})
+    
+
     
     # labels
     data['OPNAMETYPE'] = data['OPNAMETYPE'].str.replace('PUK','Klinische opname')
@@ -889,8 +626,7 @@ def cleaner_labs(data):
             ids_unknown.append(ex['PATIENTNR'][0])
         elif ex['BESTEMMING'].isnull().all():   # all bestemming unknown
             ids_unknown.append(ex['PATIENTNR'][0])
-        elif ex['BESTEMMING'].iloc[-1] == 'Onbekend': # last bestemming unknown
-            ids_unknown.append(ex['PATIENTNR'][0])
+    print('N patients filtered due to unkonwn destination or department:', len(ids_unknown))        
             
     all_ids = np.unique(data['PATIENTNR'])
     ids = [x for x in all_ids if x not in ids_unknown]
@@ -918,11 +654,11 @@ def cleaner_labs(data):
     df_lab = df_lab.reset_index(drop=True)
     
     
-
+    unique_features = np.unique(data.DESC)
     
     print('Lab Data cleaned')
     
-    return df_lab
+    return df_lab,unique_features
 
 def cleaner_vitals(data):
     print('cleaner vitals triggered')
@@ -935,6 +671,7 @@ def cleaner_vitals(data):
     print(data.shape)
     data = data[data.UITSLAG.apply(lambda x: x.isnumeric())]
     print(data.shape)
+    data = data.astype({"UITSLAG": float})    
        
     
     # filter columns with mean and diastolic BP
@@ -948,14 +685,8 @@ def cleaner_vitals(data):
     mask = data['PATIENTNR'].str.contains('nan')
     data = data[~mask]
     data['PATIENTNR'] = data['PATIENTNR'].astype(float)
-    data['UITSLAG'].astype(int)
+
     
-    for i in range(data.shape[0]):
-        
-        try:
-            data['UITSLAG'].iloc[i] = float(data['UITSLAG'].iloc[i])
-        except:
-            print(data['UITSLAG'].iloc[i])
             
     # data['Data2'] = data['Data2'].astype(np.float16)
     # data['Data3'] = data['Data3'].astype(np.float16)
@@ -966,7 +697,10 @@ def cleaner_vitals(data):
     data['DESC'] = data['DESC'].str.replace('NIBP','BP')
     data['DESC'] = data['DESC'].str.replace('Resp(vent)','RespVent')
     data['DESC'] = data['DESC'].str.replace('Resp','RR')
-   
+    data['DESC'] = data['DESC'].str.replace('RRVent','RR')
+    data.loc[data.DESC == 'FiO2(set)','DESC'] = 'FiO2'
+    # data['DESC'] = data['DESC'].str.replace('FiO2(set)','FiO2')
+    
     print(data['OPNAMETYPE'].unique())
     print('UNIQUE OPNAMETYPE VITALS: \n', data['OPNAMETYPE'].value_counts())
     
@@ -979,6 +713,8 @@ def cleaner_vitals(data):
     print('Unique types in vitals set:',data['OPNAMETYPE'].unique())
     df_vitals = data.reset_index(drop=True)
     print('Vitals Data cleaned')
+    
+    print(data[data.DESC=='FiO2(set)'])
     return df_vitals
 
 
@@ -991,20 +727,19 @@ def df_merger(df_1,df_2,df_cci,specs):
     df = pd.concat([df_1,df_2],axis=0)
     
     print('----Feature selection-----')
-    counts = df_1['DESC'].value_counts()
-    features = counts.index[:specs['n_features']]
     
-    print(len(features),' lab features included')
-    
-    # print('Vitals features ranking:')
+    print('Vitals features ranking:')
     print(df_2['DESC'].value_counts())
     
     
     # Manual feature selection
     features = [
-       'Hemoglobine','RDW','MCV',
-       'Leukocyten',
-             'CRP','LD','ALAT (GPT)','ASAT (GOT)','Ferritine'
+        # 'Hemoglobine',
+        'RDW',
+        # 'MCV',
+        # 'Leukocyten',
+             'CRP','LD',
+              'ALAT (GPT)','ASAT (GOT)','Ferritine'
              ]
     # features =  ['Kreatinine','Natrium','Hemoglobine','RDW','MCV','Kalium','Trombocyten','Leukocyten',
     #           'CRP','LD','ALAT (GPT)','ASAT (GOT)','Ferritine',"Lymfo's abs",'Lymfocyten',"Baso's abs","Baso's"]
@@ -1014,7 +749,7 @@ def df_merger(df_1,df_2,df_cci,specs):
     # idx = np.where(freqs > 0.8*freqs[0])
     # features_vitals = features_vitals[idx]
     
-    features_vitals = ['SpO2','HR','BP','RR','Temp']
+    features_vitals = ['SpO2','HR','BP','RR','Temp','FiO2']
     print(len(features_vitals),' vitals features included')
     
     #merge features labs and vitals
@@ -1026,13 +761,13 @@ def df_merger(df_1,df_2,df_cci,specs):
     df = df[mask]
 
     
-    col_list = ['PATIENTNR','BMI','LEEFTIJD','BESTEMMING',
-            'OPNAMETYPE','AFNAMEDATUM','DESC','UITSLAG','OPNAMEDATUM','ONTSLAGDATUM','DOSSIER_BEGINDATUM','DOSSIER_EINDDATUM',]
+    col_list = ['PATIENTNR','BMI','LEEFTIJD','SEX',
+            'OPNAMETYPE','AFNAMEDATUM','DESC','UITSLAG','OPNAMEDATUM','ONTSLAGDATUM','DOSSIER_BEGINDATUM','DOSSIER_EINDDATUM','BESTEMMING']
     df = df[col_list]
 
-    df.columns = ['ID','BMI','AGE','DEST',
-            'DEPARTMENT','TIME','VARIABLE','VALUE','ADMISSION','DISCHARGE','START','END']
-    
+    df.columns =  ['ID','BMI','AGE','SEX',
+            'DEPARTMENT','TIME','VARIABLE','VALUE','ADMISSION','DISCHARGE','START','END','DEST']
+   
     
     ids = np.unique(df['ID']) # Unique IDs in dataset
     print('N patients:',len(ids))
@@ -1052,6 +787,7 @@ def df_merger(df_1,df_2,df_cci,specs):
     outpats = np.asarray(outpats)
     ids_out = ids[np.where(outpats>3)]
     print('Identified óutpatient patients: \n',ids_out)
+    
     ids_remove = []
     
     rest = pd.DataFrame()
@@ -1096,16 +832,15 @@ def df_merger(df_1,df_2,df_cci,specs):
     
     print('Unique features:', df['VARIABLE'].unique())
     print('Unique patients:', len(df['ID'].unique()))
-    
-    # Set PIDs to strings
-    df['ID'] = df['ID'].astype(str)
+
+    df = df.astype({"ID":str,"VALUE": float})  
     
     return df,features
 
 
 
 
-def get_ids(df):
+def get_ids(df):  # identify patient IDs for 'event' group, only clinic group en ICU only group
     print('get_ids triggered')
     # get IDs of all ICU containing patients
     ids_IC = []
@@ -1143,7 +878,8 @@ def get_ids(df):
     return ids_IC_only, ids_all, ids_clinic, ids_events
 
 
-def fix_episodes(df):
+def fix_episodes(df,specs):
+    from datetime import datetime, timedelta
 
     print(df.shape)
 
@@ -1209,99 +945,41 @@ def fix_episodes(df):
     df_new = df_new[~df_new.ID.isin(ids_ICU_only)] # Filter only IC patients
     print(len(np.unique(df_new.ID)),' episodes total')
     
+    
+    # Transfer episodes
+    print('Bestemmingen:')
+    print(df_new.DEST.value_counts())
+    
+    a = list()
+    transfer_pats = pd.DataFrame()
+    for i in df_new.ID.unique():
+        ex = df_new[df_new.ID == i].sort_values(by='TIME').reset_index(drop=True)
+        if ((ex.DEST[0] == 'Ander ziekenhuis') | (ex.DEST[0] == 'Onbekend')| (ex.DEST[0] == 'Ziekenhuis buitenland')) & (i not in ids_event):
+            a.append(i)
+            ex_filtered = ex[ex['TIME']<(ex.TIME.max()-timedelta(hours=specs['pred_window']))]
+            transfer_pats = pd.concat([transfer_pats,ex_filtered],axis=0)
+    
+    print(len(a),' Transfer tp other hospital patients identified')
+    mask = df_new.ID.isin(a)
+    
+    df_new = df_new[~mask] # remove transfer from bulk
+    df_new = pd.concat([df_new,transfer_pats],axis=0) #merge again with filtered 'transfer' patients
+    
+    
+    df_new.columns = ['ID','BMI','AGE','SEX',
+            'DEPARTMENT','TIME','VARIABLE','VALUE','ADMISSION','DISCHARGE','START','END','DEST']
+
  
     return df_new,ids_event
 
 
-    
-    
-    
-
-def missing(df,features,ids_clinic,ids_events,x_days = True):
-    
-    from datetime import datetime,timedelta
-    x = 5
-    
-    df = df[['ID','VARIABLE','TIME','VALUE','DEPARTMENT']]
-    df = np.asarray(df)
-    df1 = []
-    n_days_clinic = []
-    # clinic only
-    for idx in ids_clinic:
-
-        patient = df[np.where(df[:,0]==idx)]
-        patient = patient[patient[:,2].argsort()]
-            
-        if x_days:    
-            t_start = patient[0,2]# define moment of ICU admission as first ICU measurement
-            t = t_start + timedelta(hours=x*24) 
-            patient = patient[np.where(patient[:,2]<t)]
-            
-        n_days = np.round((patient[-1,2] - patient[0,2]).total_seconds() / 3600.0/24)
-        if n_days == 0:
-            n_days = 1
-        n_days_clinic.append(n_days)    
-        for feature in features:
-            temp = patient[np.where(patient[:,1]==feature)]
-            v = []
-            v.append(idx)
-            v.append(feature)
-            v.append(temp.shape[0]/n_days)
-            df1.append(v)
-    
-    df1=np.array([np.array(x) for x in df1])
-    df1 = pd.DataFrame(df1)
-    df1.columns = ['ID','feature','/day']
-    df1['label'] = 'clinic'
-    
-    
-    df2 = []
-    
-    n_days_events = []
-    # clinic + ICU
-    for idx in ids_events:
-        
-        patient = df[np.where(df[:,0]==idx)]
-        patient = patient[patient[:,2].argsort()]
-        t_event = patient[np.where(patient[:,4]=='IC')][0,2]# define moment of ICU admission as first ICU measurement
-        patient = patient[np.where(patient[:,2]<t_event)]
-        
-        if x_days:    
-            t_start = patient[0,2]# define moment of ICU admission as first ICU measurement
-            t = t_start + timedelta(hours=x*24) 
-            patient = patient[np.where(patient[:,2]<t)]
-        
-        
-        n_days = np.round((patient[-1,2] - patient[0,2]).total_seconds() / 3600.0/24)
-        
-        if n_days == 0:
-            n_days = 1
-        n_days_events.append(n_days)    
-        for feature in features:
-            temp = patient[np.where(patient[:,1]==feature)]
-            v = []
-            v.append(idx)
-            v.append(feature)
-            v.append(temp.shape[0]/n_days)
-            df2.append(v)
-    
-    df2=np.array([np.array(x) for x in df2])
-    df2 = pd.DataFrame(df2)
-    df2.columns = ['ID','feature','/day']
-    df2['label'] = 'clinic+IC'
-    
-    df_full = pd.concat([df1,df2])
-    
-    n_clinic =np.array([np.array(x) for x in n_days_clinic])
-    n_events = np.array([np.array(x) for x in n_days_events])
-    return df_full,n_clinic,n_events
- 
-def Demographics(df):
+def Demographics(df):  # create df with demographics for all IDs
     ids = np.unique(df['ID']) # Unique IDs in dataset
         
     # create df with Demographics data (BMI and AGE) -- >  df_demo
     bmi = []
     age =[]
+    sex=[]
     for i in ids:
         temp = df[df['ID']==i]
         mask =  temp['BMI'].isna()
@@ -1315,11 +993,18 @@ def Demographics(df):
             age.append(float(temp[~mask].reset_index()['AGE'][0]))
         else:
             age.append(np.nan)
+        mask =  temp['SEX'].isna()
+        if temp[~mask].shape[0]>0:
+            sex.append(float(temp[~mask].reset_index()['SEX'][0]))
+        else:
+            sex.append(np.nan)
     
     df_demo = pd.DataFrame()
     df_demo['ID'] = ids
+    df_demo['SEX'] = sex
     df_demo['BMI'] = bmi
     df_demo['AGE'] = age
+    
     
     # Outlier detection BMI and Age
     bmi = df_demo['BMI']
@@ -1377,6 +1062,11 @@ def Split(X,y,y_pat,y_t,ids_events,random_state,specs):
     X_val = X_val[:,:-1]
     X_test = X_test[:,:-1]
     
+    #Transform to floats
+    X_train = X_train.astype(float)
+    X_val = X_val.astype(float)
+    X_test = X_test.astype(float)
+    
     assert X_train.shape[0] == y_train.shape[0]
     assert X_val.shape[0] == y_val.shape[0]
     assert X_test.shape[0] == y_test.shape[0]
@@ -1389,15 +1079,6 @@ def Split(X,y,y_pat,y_t,ids_events,random_state,specs):
           )
     
     return X_train,y_train,X_val,y_val,y_pat_val,y_t_val,X_test,y_test
-
-def Normalize_full(X):
-    from sklearn.preprocessing import StandardScaler
-    
-    scaler = StandardScaler()
-    
-    X_norm = scaler.fit_transform(X)
-    return X_norm,scaler
-
     
 def Normalize(X_train,X_val,X_test,specs):
     from sklearn.preprocessing import StandardScaler
@@ -1414,6 +1095,15 @@ def Normalize(X_train,X_val,X_test,specs):
     
     
     return X_train_norm,X_val_norm,X_test_norm,scaler
+
+def Normalize_full(X):
+    from sklearn.preprocessing import StandardScaler
+    X = X.astype(float)
+    
+    scaler = StandardScaler()
+    
+    X_norm = scaler.fit_transform(X)
+    return X_norm,scaler
 
 def Predict_full_model(clf,scaler,imputer,X,y):
         
@@ -1437,7 +1127,7 @@ def Predict_full_model(clf,scaler,imputer,X,y):
     print('N feature vectors in validation fold:',len(y))
     print('Prevalence in validation fold:',sum(y)/len(y))
     
-    return predictions,X
+    return predictions,X,auc
 
 def prepare_feature_vectors(df,df_demo,ids_events,features,specs):
     print('prepare_feature_vectors triggered')
@@ -1449,31 +1139,26 @@ def prepare_feature_vectors(df,df_demo,ids_events,features,specs):
     ----------
     df : pd.DataFrame
         df to sample from.
-    df_train: pd.DataFrame
-        df containing training set. Imputed values are based on the training set. 
     df_demo: pd.DataFrame
         demograhics df to sample from.
-    df_demo_train: pd.DataFrame
-        demograhics df containing the training set. Imputed values are based on the training set. 
-    pred_window: int
-        Size of prediction window in hours
-    gap: int
-        Size of gap in hours
-    int_neg: int
-        Interval between samples for the negative class. In hours.
-    int_pos: int
-        Interval between samples for the positive class. In hours.
-    feature_window: int
-        Number of most recent assessments to be included in feature vector
-    variables: np.array[str]
+    ids_events: list
+        list with patient IDs which have the ICU trasnfer event
+    features: np.array[str]
         Array of strings representing the names of the variables to be included in the model.
-    
+    specs: dict
+        dictionary with model specifications
         
     Returns
     -------
+    
     X: matrix [N feature vectors x N variables]
-    y: vector [N feature vectors x 1]
-    type : np.array
+    y: vector [N feature vectors x 1]   type : np.array
+    
+    entry_dens_full [N feature vectors x N variables - n demographics]
+    y_entry_dens [N feature vectors x 1]
+    y_pat [N feature vectors x 1]
+    y_t [N feature vectors x 1]
+    
     """
 
     from datetime import datetime, timedelta
@@ -1481,20 +1166,21 @@ def prepare_feature_vectors(df,df_demo,ids_events,features,specs):
     
 
     vectors = list() #create empty list for feature vectors
+    
+    # create empty lists for label (y), time-to-event (y_t) and patient label (y_pat)
     y_pat = list()
     y_t = list()
     y = list()
     
+    # empty lists for entry density
     entry_dens_full_pos = list()
     entry_dens_full_neg = list()
         
-    
-    
+    # split df in pos and neg patients
     df_neg = df[~df['ID'].isin(ids_events)] # Isolate negative df --> no ICU 
     df_pos = df[df['ID'].isin(ids_events)]
     
-
-    #Make arrays out of dfs, keep only ID, VARIABLE, TIME, VALUE, DEPARTMENT
+    #ttransfer  dfs to numpy arrays, keep only ID, VARIABLE, TIME, VALUE, DEPARTMENT
     df_pos = df_pos[['ID','VARIABLE','TIME','VALUE','DEPARTMENT','DISCHARGE','START']]
     df_neg = df_neg[['ID','VARIABLE','TIME','VALUE','DEPARTMENT','DISCHARGE','START']]
     
@@ -1505,152 +1191,208 @@ def prepare_feature_vectors(df,df_demo,ids_events,features,specs):
     df_neg = np.asarray(df_neg)
     df_demo = np.asarray(df_demo)
 
-    count = 0
-    pos_counter = 0
+
+    count = 0 # initiate counter for patients with LOS too short
+    pos_counter = 0 # initiate counter of positive samples
+    
     print('-----Sampling for positive patients-----') 
     
     n_pos_samples = int(specs['pred_window']/specs['int_pos'])
     print('max',n_pos_samples+1, 'positive samples per positive patient')
     
-    for idx in np.unique(df_pos[:,0]):                      # loop over patients
+    for idx in np.unique(df_pos[:,0]):  # loop over pos patient IDs
 
-        entry_dens_patient = list()
+        entry_dens_patient = list() # empty list for inividual entry density
     
-        patient = df_pos[np.where(df_pos[:,0]==idx)] # isolate pat id
+        patient = df_pos[np.where(df_pos[:,0]==idx)] # isolate patient from df
         patient = patient[patient[:,2].argsort()]   # sort by date
-        demo = df_demo[np.where(df_demo[:,0]==idx)][:,1:][0] # isolate pat id
+        demo = df_demo[np.where(df_demo[:,0]==idx)][:,1:][0] # isolate pat in dmographics df
         
         t_event = patient[np.where(patient[:,4]=='IC')][:,6].min() # define moment of ICU admission 
-        total_los = np.round((t_event - patient[:,2].min()).total_seconds()/3600,0) #initialize LOS variable [hours] 
+        total_los = np.round((t_event - patient[:,2].min()).total_seconds()/3600,0) # define total length-of-stay [hours]
         
 
-        if total_los <= 0: # cannot label patients for which time between start and event is shorter than the gap
+        if total_los <= 0: # identify patients who's length of stay is negative
             count += 1
             print('los shorter than zero:',total_los,'pos episode:',idx)
             
         else:
 
-            if total_los <= specs['int_pos']:
-                # print('pos patient LOS shorter than interval')
-                t = patient[:,2].min() + timedelta(hours=int(total_los/2))
-                los = int(total_los/2)
-                temp = patient[np.where(patient[:,2]<t)]
-                ##### IF ENTRY DENISTY
-                t_2 = t - timedelta(hours=24)
-                temp = temp[np.where(temp[:,2]>=t_2)]
-                ######
-                if (los<0) | (los> total_los):
-                    print('wrong: negative or too big los',los)
-                v,entry_dens = create_feature_window(temp,demo,features,los,specs,idx)
-                t_to_event = int((t_event - t).total_seconds() / 3600.0)
+            if total_los <= specs['int_pos']: # if LOS < the sampling interval:
+                
+                t = patient[:,2].min() + timedelta(hours=int(total_los/2))  #define time of smapling halfway the hospitalization
+                los = np.round((total_los/2),1)
+                temp = patient[np.where(patient[:,2]<t)] # filter temp for time of sampling
+                
+                if specs['entry_dens']:
+                    ##### IF ENTRY DENISTY
+                    t_2 = t - timedelta(hours=specs['int_pos'])
+                    temp = temp[np.where(temp[:,2]>=t_2)]
+                    ######
+                else:
+                    t_2 = t - timedelta(hours=specs['moving_feature_window']) # define earliest point to sample from
+                    temp = temp[np.where(temp[:,2]>=t_2)] # filter temp for moving feature window
+                
+                if (los<=0) | (los> total_los):
+                    print('wrong: negative (or zero) or too big los',los)
+                    
+                v,entry_dens = create_feature_window(temp,demo,features,los,specs,idx) # Do actual sampling, collect v --> feature vector
+                t_to_event = int((t_event - t).total_seconds() / 3600.0) 
                 pos_counter += 1
-                vectors.append(v)
+                vectors.append(v) # collect all feature vectors in big list
                 y_pat.append(1) # add patient label
                 y_t.append(t_to_event)
                 y.append(1)
-                entry_dens_patient.append(entry_dens)
+                entry_dens_patient.append(entry_dens) # collect all entry densities of single patient
                 
-            else:
-                los = specs['int_pos'] #initialize los
+            else: # if LOS > the sampling interval:
+                los = specs['int_pos'] # start sampling after first interval 
                 t = patient[:,2].min() + timedelta(hours=specs['int_pos']) # initialize t
-                while los < total_los:
+                
+                if specs['entry_dens_window']:
+                    entry_dens_window = specs['entry_dens_window']
+                else:
+                    entry_dens_window = 10000
+                
+                runtime = np.min([total_los,entry_dens_window]) # define total time to sample from patient (total length of stay or specified)
                     
-                    temp = patient[np.where(patient[:,2]<t)]
-                    ##### IF ENTRY DENISTY
-                    t_2 = t - timedelta(hours=24)
-                    temp = temp[np.where(temp[:,2]>=t_2)]
-                    ######
+                while los < runtime:
+                    
+                    temp = patient[np.where(patient[:,2]<t)] # filter temp for time of sampling
+                    
+                    if specs['entry_dens']:
+                        ##### IF ENTRY DENISTY
+                        t_2 = t - timedelta(hours=specs['int_pos'])
+                        temp = temp[np.where(temp[:,2]>=t_2)]
+                        ######
+                    else:
+                        t_2 = t - timedelta(hours=specs['moving_feature_window'])
+                        temp = temp[np.where(temp[:,2]>=t_2)]  # filter temp for moving feature window
+                
                     if (los<0) | (los> total_los):
                         print('wrong: negative or too big los',los)
                 
-                    v,entry_dens = create_feature_window(temp,demo,features,los,specs,idx)
+                    v,entry_dens = create_feature_window(temp,demo,features,los,specs,idx) # Do actual sampling, collect v --> feature vector
                     t_to_event = int((t_event - t).total_seconds() / 3600.0)
                     
+                    
                     if (t_to_event <= (specs['pred_window']+specs['gap'])) & (t_to_event > specs['gap']):
+                    # IF time-to-event is smaller then prediction window, but larger than gap --> label positive
+                    
                         vectors.append(v) # add feature vector to 'pos' list
                         pos_counter += 1
                         y.append(1)
                         
                         # print('sample in pred window')
                     elif t_to_event > (specs['pred_window']+specs['gap']):
+                    # IF time-to-event is larger then prediction window + gap --> label negative (Too early)
+                    
                         vectors.append(v) # add feature vector to 'neg' list
                         y.append(0)
                         # print('sample before pred window')
                     else:
+                    # IF time-to-event is smaller then gap --> label negative (Too late)
+                    
                         vectors.append(v) # in GAP --> add feature vector to 'neg' list
                         y.append(0)
                         # print('sample in GAP')
                         
                     y_pat.append(1) # add patient label
                     y_t.append(t_to_event)
-                    entry_dens_patient.append(entry_dens)
+                    entry_dens_patient.append(entry_dens) # collect all entry densities of single patient
                         
                     los += specs['int_pos']
                     t = t + timedelta(hours=specs['int_pos'])
-                    
+        
+        # collect entry densities of all pos patients
+        
         if np.array(entry_dens_patient).shape[0] > 0:
             entry_dens_patient = list(np.array(entry_dens_patient).mean(axis=0))
             entry_dens_full_pos.append(entry_dens_patient)
         else:
-            print(idx)
+            print('No entry density for patient ',idx)
             
-            
-    print('number of pos patients with shorter stay than the defined GAP: ', count)              
+    print('number of pos patients with shorter stay than the defined GAP: ', count)    
+
+          
     print('-----Sampling for negative patient-----')
     count=0
-    for idx in np.unique(df_neg[:,0]): # loop over patients
+    for idx in np.unique(df_neg[:,0]): # loop over negative patients
         
         entry_dens_patient = list()
         
-        patient = df_neg[np.where(df_neg[:,0]==idx)] # isolate by pid
+        patient = df_neg[np.where(df_neg[:,0]==idx)] # isolate df by patient ID
         patient = patient[patient[:,2].argsort()]   # sort by date
-        demo = df_demo[np.where(df_demo[:,0]==idx)][:,1:][0]  # isolate by pid  
+        demo = df_demo[np.where(df_demo[:,0]==idx)][:,1:][0]  # isolate demographics by patient ID
         
         if  pd.isnull(patient[:,2].min()):
             print('no times available')
         if pd.isnull(patient[:,5].min()):
-            # print('no discharge available')
-            t_event = patient[:,2].max()
+            
+            t_event = patient[:,2].max() # IF no discharge time available: event = last observed time
         else:            
             t_event = patient[:,5].min() # event = discharge time
         
-        total_los = np.round((t_event - patient[:,2].min()).total_seconds()/3600,0) #initialize LOS variable [hours] 
+        total_los = np.round((t_event - patient[:,2].min()).total_seconds()/3600,0) # define total length-of-stay [hours]
         
-        if total_los <= 0: # cannot label patients for which time between start and event is shorter than the gap
+        if total_los <= 0: # identify patients who's length of stay is negative
             count += 1
             print('los nagetive or 0:',total_los,'neg episode:',idx)
             
         else:
-            if total_los <= specs['int_neg']:
-                # print('neg patient LOS shorter than interval')
-                t = patient[:,2].min() + timedelta(hours=int(total_los/2))
-                los = int(total_los/2)
+            if total_los <= specs['int_neg']:  # if LOS < the sampling interval:
+                
+                t = patient[:,2].min() + timedelta(hours=int(total_los/2)) 
+                los = np.round((total_los/2),1) # Update los with sampling interval
                 temp = patient[np.where(patient[:,2]<t)]
-                ##### IF ENTRY DENISTY
-                t_2 = t - timedelta(hours=24)
-                temp = temp[np.where(temp[:,2]>=t_2)]
-                ######
-                if (los<0) | (los> total_los):
-                    print('wrong: negative or too big los',los)
-                v,entry_dens = create_feature_window(temp,demo,features,los,specs,idx)
+                
+                if specs['entry_dens']:
+                    ##### IF ENTRY DENISTY
+                    t_2 = t - timedelta(hours=specs['int_neg'])
+                    temp = temp[np.where(temp[:,2]>=t_2)]
+                    ######
+                else:
+                    t_2 = t - timedelta(hours=specs['moving_feature_window'])
+                    temp = temp[np.where(temp[:,2]>=t_2)]
+                    
+                if (los<=0) | (los> total_los):
+                    print('wrong: negative (or zero) or too big los',los)
+                    
+                v,entry_dens = create_feature_window(temp,demo,features,los,specs,idx) # Do actual sampling, collect v --> feature vector
                 t_to_event = int((t_event - t).total_seconds() / 3600.0)
                 vectors.append(v)
                 y_pat.append(0) # add patient label
                 y_t.append(t_to_event)
-                entry_dens_patient.append(entry_dens)
+                entry_dens_patient.append(entry_dens) # collect all entry densities of single patient
                 y.append(0)
-            else:
+                
+            else:   # if LOS > the sampling interval:
+                
                 los =  specs['int_neg'] #initialize los
                 t = patient[:,2].min() # initialize t
-                while los < total_los:
-    
+                
+                if specs['entry_dens_window']:
+                    entry_dens_window = specs['entry_dens_window']
+                else:
+                    entry_dens_window = 10000
+                
+                
+                runtime = np.min([total_los,entry_dens_window])
+                
+                while los < runtime:
+                
                     t = t + timedelta(hours=specs['int_neg'])
                     
                     temp = patient[np.where(patient[:,2]<t)]
-                    ##### IF ENTRY DENISTY
-                    t_2 = t - timedelta(hours=24)
-                    temp = temp[np.where(temp[:,2]>=t_2)]
-                    ######
+                    if specs['entry_dens']:
+                        ##### IF ENTRY DENISTY
+                        t_2 = t - timedelta(hours=specs['int_neg'])
+                        temp = temp[np.where(temp[:,2]>=t_2)]
+                        ######
+                    else:
+                        t_2 = t - timedelta(hours=specs['moving_feature_window'])
+                        temp = temp[np.where(temp[:,2]>=t_2)]
+                
                     if (los<0) | (los> total_los):
                         print('wrong: negative or too big los',los)
                     
@@ -1658,10 +1400,11 @@ def prepare_feature_vectors(df,df_demo,ids_events,features,specs):
                     vectors.append(v) # add feature vector to 'neg' list
                     y_pat.append(0) # add patient label
                     y_t.append(int((t_event - t).total_seconds() / 3600.0))
-                    entry_dens_patient.append(entry_dens)
+                    entry_dens_patient.append(entry_dens)  # collect all entry densities of single patient
                     y.append(0)   
                     los += specs['int_neg']
-                
+         
+        # collect entry densities of all neg patients
         if np.array(entry_dens_patient).shape[0] > 0:
             entry_dens_patient = list(np.array(entry_dens_patient).mean(axis=0))
             entry_dens_full_neg.append(entry_dens_patient)
@@ -1672,31 +1415,25 @@ def prepare_feature_vectors(df,df_demo,ids_events,features,specs):
     print('number of neg patients with shorter stay than the defined GAP: ', count)            
     
     print('N positive samples:',pos_counter)
-    X = np.array([np.array(x) for x in vectors])
+    
+    X = np.array([np.array(x) for x in vectors]) # create X by stacking all feature vectors
+    print('X shape:',X.shape)
     
     y_pat = np.array([np.array(x) for x in y_pat])
     y_t = np.array([np.array(x) for x in y_t])
     y = np.array([np.array(x) for x in y])
-    
-    
+    print('y shape:',y.shape)
+    assert(np.isnan(y).any() == False)
     assert(y.shape == y_pat.shape == y_t.shape)
     
     entry_dens_full_pos = np.array(entry_dens_full_pos)
     entry_dens_full_neg = np.array(entry_dens_full_neg)
     print('entry_density positive patients:',entry_dens_full_pos.shape)
     print('entry_density negative patients:',entry_dens_full_neg.shape)
-    entry_dens_full = np.concatenate([entry_dens_full_pos,entry_dens_full_neg],axis = 0)
-    
+    entry_dens_full = np.concatenate([entry_dens_full_pos,entry_dens_full_neg],axis = 0) # merge entry densities
+    y_entry_dens = np.concatenate([np.ones(entry_dens_full_pos.shape[0]),np.zeros(entry_dens_full_neg.shape[0])],axis=0)
     print(entry_dens_full.shape)
     
-    y_entry_dens = np.concatenate([np.ones(entry_dens_full_pos.shape[0]),np.zeros(entry_dens_full_neg.shape[0])],axis=0)
-    
-    # print(feature_imputation)
-    print('X shape:',X.shape)
-    # assert(np.isnan(X).any() == False)
-    
-    print('y shape:',y.shape)
-    assert(np.isnan(y).any() == False)
     
     return X, y,entry_dens_full,y_pat,y_t,y_entry_dens             
         
@@ -1710,35 +1447,38 @@ def create_feature_window(df,demo,variables,los,specs,idx):
     ----------
     df : pd.DataFrame
         df with data of inidividual patient until moment of sampling
-    df_train: pd.DataFrame
-        df containing training set. Imputed values are based on the training set. 
-    df_demo: pd.DataFrame
+    demo: pd.DataFrame
         demograhics df to sample from.
-    df_demo_train: pd.DataFrame
-        demograhics df containing the training set. Imputed values are based on the training set. 
-    n: int
-        feature_window
     variables: np.array[str]
         Array of strings representing the names of the variables to be included in the model.
+    los: int
+        LOS of patient at moment of smapling
+    specs: dict
+        model specifications
     idx: str
         patient ID
         
     Returns
     -------
-    v: feature vector
-    type : np.array
+    v: feature vector, type: list
+    entry_dens: entry denisty vector, type: list
+    
     """
     
+    import datetime as dt
     from datetime import datetime, timedelta
     
+    
+    variables = list(variables)
+    variables.remove('FiO2') # remove FiO2 if present
+    
     v = list() #define empty feature vector
-    n = specs['feature_window'] # Feature window
-    
-    stat_features = ['SpO2','HR','BP','RR','Temp','po2_arterial','pco2_arterial','ph_arterial','pao2_over_fio2','base_excess']
-    v_n = len(demo)+len(variables)
-    
     entry_dens = list()
     
+    
+    n = specs['feature_window'] # Feature window
+    info_miss_variables = ['SpO2','HR','BP','RR','Temp'] #variables to sample info-missingness features from
+    stat_features = ['SpO2','HR','BP','RR','po2_arterial','pco2_arterial','ph_arterial','pao2_over_fio2','base_excess'] #variables to sample stats features from
     
     # ------ Add demographics  ---------
     
@@ -1750,9 +1490,28 @@ def create_feature_window(df,demo,variables,los,specs,idx):
 
     # -------- Add LOS ----------------
     if specs['time']:
-        v_n += 1
         v.append(los)
-        
+    
+    # ----- Add binary / continuous / ratio for NIV --------
+    if specs['NIV']:
+        temp = df[np.where(df[:,1]=='FiO2')]
+        temp_sat = df[np.where(df[:,1]=='SpO2')]
+        if temp.shape[0] < 1:
+            v.append(0)
+            entry_dens.append(1)
+            v.append(np.nan)
+            entry_dens.append(0)
+        else:
+            v.append(1)
+            v.append(temp[-n:,3])
+            entry_dens = entry_dens + list([1,1])
+        if (temp.shape[0] > 0) & (temp_sat.shape[0]>0):
+            v.append(temp_sat[-n,3]/temp[-n:,3])
+            entry_dens.append(1)
+        else:
+            v.append(np.nan)
+            entry_dens.append(0)
+    
     # ------ Add Raw vairables (labs / vitals) ---------------
     count=0
     for item in variables: #loop over features
@@ -1768,51 +1527,55 @@ def create_feature_window(df,demo,variables,los,specs,idx):
             entry_dens.append(1)
             
         count+=1
-        
    
     
     # -------- Add info_missingness ----------------
-    
-       
+
     if specs['freq']: # variable frequency
-        v_n += (len(variables)-5)
-        
-        info_miss_variables = list(variables)
-        info_miss_variables.remove('BP')
-        info_miss_variables.remove('RR')
-        info_miss_variables.remove('HR')
-        info_miss_variables.remove('Temp')
-        info_miss_variables.remove('SpO2')
-        info_miss_variables = np.asarray(info_miss_variables)
         
         for item in info_miss_variables: 
-            
             temp = df[np.where(df[:,1]==item)] # Extract snippet with only this feature
-            v.append(temp.shape[0]/los)
+            v.append(temp.shape[0]/los) # number of instances / number of staying hours
             entry_dens.append(1)
             
     if specs['inter']: # variable interval
-        v_n += (len(variables)-5)
+       
         for item in info_miss_variables: 
             
             temp = df[np.where(df[:,1]==item)] # Extract snippet with only this feature
                 
             # interal between current and previous measurement
             if temp.shape[0] > 1:
-                v.append(np.round((temp[-1,2]-temp[-2,2]).total_seconds()/3600.0,1))
+                v.append(np.round((temp[-1,2]-temp[-2,2]).total_seconds()/3600.0,1)) # Time between most recent and second most recent instance
                 entry_dens.append(1)
             
             else: # less than 2 samples available?, no interval possible
                 v.append(np.nan)
                 entry_dens.append(0)
+    
                 
+    # ---------- Add time of assessment ---------
+    if specs['clocktime']:
+        for item in info_miss_variables: 
+            temp = df[np.where(df[:,1]==item)] # Extract snippet with only this feature
+                
+            # get clockhour of time of assessment
+            if temp.shape[0] > 1:
+                # print(temp[-1,2])
+                # print(temp[-1,2].hour)
+                v.append(temp[-1,2].hour)
+                entry_dens.append(1)
             
-    # ---------- Add time series data ---------
+            else: # less than 2 samples available?, no interval possible
+                v.append(np.nan)
+                entry_dens.append(0)
+    
+    # ---------- Add trend features ---------
     
     # Diff current - previous
     if specs['diff']:
         stat_features_present = [x for x in list(variables) if x in stat_features]
-        v_n += len(stat_features_present)
+      
         for item in stat_features_present:
             
             temp = df[np.where(df[:,1]==item)] # Extract snippet with only this feature
@@ -1830,7 +1593,7 @@ def create_feature_window(df,demo,variables,los,specs,idx):
     if specs['stats']:
         
         stat_features_present = [x for x in list(variables) if x in stat_features]
-        v_n += (len(stat_features_present)*6)
+        
         for item in stat_features_present:
             
             temp = df[np.where(df[:,1]==item)] # Extract snippet with only this feature
@@ -1859,28 +1622,53 @@ def create_feature_window(df,demo,variables,los,specs,idx):
                 entry_dens = entry_dens + list([0,0,0,0,0])
                 
             if temp.shape[0] >= 3:
+                # Add std of 1st order derivative
                 v.append(np.std(np.diff(temp[:,3]))) # add diff_std
                 entry_dens.append(1)
-            
+                # Add 2nd order derivative
+                v.append(np.diff(np.diff(temp[-3:,3]))) # add diff_2
+                entry_dens.append(1)
+                
             else: # less than 3 samples available?, no std of diffs
-                v.append(np.nan)
-                entry_dens.append(0)
-
-    # assert v_n == len(v)
-    v.append(idx)
+                v.extend(np.ones(2)*np.nan)
+                entry_dens = entry_dens + list([0,0])
+            
+            # if temp.shape[0] >= 4:
+            #     # Add std of 2nd order derivative
+            #     v.append(np.std(np.diff(np.diff(temp[:,3])))) # add diff_2_std
+            #     entry_dens.append(1)
+                
+            # else: # less than 4 samples available?, no std of 2nd order diff
+            #     v.extend(np.ones(1)*np.nan)
+            #     entry_dens.append(0)
+            
+    v.append(idx) # finally add patient ID to feature vector (need this to do data split later)
     
     return v,entry_dens
 
+
+
 def Imputer_full_model(X,specs):
-    from sklearn.impute import KNNImputer
-    imputer = KNNImputer(n_neighbors=specs['knn'])
+    if specs['imputer'] == 'KNN':
+        from sklearn.impute import KNNImputer
+        imputer = KNNImputer(n_neighbors=specs['knn'])
+    elif specs['imputer'] == 'BR':
+        from sklearn.experimental import enable_iterative_imputer
+        from sklearn.impute import IterativeImputer
+        imputer = IterativeImputer(random_state=0,initial_strategy=specs['initial_strategy'])
+    
     X_imp = imputer.fit_transform(X)
     return X_imp,imputer
 
 def Imputer(X_train,X_val,X_test,specs):
+    if specs['imputer'] == 'KNN':
+        from sklearn.impute import KNNImputer
+        imputer = KNNImputer(n_neighbors=specs['knn'])
+    elif specs['imputer'] == 'BR':
+        from sklearn.experimental import enable_iterative_imputer
+        from sklearn.impute import IterativeImputer
+        imputer = IterativeImputer(random_state=0,initial_strategy=specs['initial_strategy'])
     
-    from sklearn.impute import KNNImputer
-    imputer = KNNImputer(n_neighbors=specs['knn'])
     imputer.fit(X_train)
     X_train = imputer.transform(X_train)
     X_val = imputer.transform(X_val)
@@ -1929,99 +1717,79 @@ def balancer(X,y,undersampling=True):
     print('After balancing: \n shape X',X_bal.shape,'n pos',sum(y_bal), 'n neg', len(y_bal)-sum(y_bal))
     return X_bal, y_bal
 
-def optimize_n_trees(X,y):
-    print('modeling with Random Forest')
-    from sklearn.ensemble import RandomForestClassifier
-    clf = RandomForestClassifier(oob_score=True, warm_start=True, class_weight = 'balanced',verbose=0)
-    min_estimators = 1
-    max_estimators = 200
-    
-    oobs = []
-    xs = []
-    for i in range(min_estimators, max_estimators + 1):
-        clf.set_params(n_estimators=i)
-        clf.fit(X, y)
 
-        # Record the OOB error for each `n_estimators=i` setting.
-        oob_error = 1 - clf.oob_score_
-        oobs.append(oob_error)
-        xs.append(i)
-    # Generate the "OOB error rate" vs. "n_estimators" plot.
-    xs = np.asarray(xs)
-    oobs = np.asarray(oobs)    
     
-    plt.plot(xs, oobs,'-b')
-    idx = np.argmin(oobs)
-    plt.plot(xs[idx],oobs[idx],'*r')
+def train_full_model(X,y,model,n_trees):
     
-    plt.xlim(min_estimators, max_estimators)
-    plt.xlabel("n_estimators")
-    plt.ylabel("OOB error rate")
-    plt.legend(loc="upper right")
-    plt.savefig('Tree_optimization',dpi=300)
+    from sklearn.model_selection import RandomizedSearchCV, GridSearchCV
+    from sklearn.linear_model import LogisticRegression
+    from sklearn.ensemble import RandomForestClassifier
+    from sklearn.metrics import precision_recall_curve
+    from sklearn.metrics import average_precision_score
+    from sklearn.model_selection import RepeatedStratifiedKFold
+    import shap
+    import skopt
+    from skopt import BayesSearchCV
+    import random
+    import xgboost as xgb
+    import time as timer
+    from sklearn.metrics import roc_auc_score
+    from sklearn.metrics import confusion_matrix
+    from sklearn.metrics import precision_recall_curve
+    from sklearn.metrics import average_precision_score
+    from sklearn.metrics import brier_score_loss
     
-def train_full_model(X,y,model):
+    if model == 'RF':
+        print('start Random Forest')
+        # define search space
+        max_features = ['auto', 'log2','sqrt'] # Number of features to consider at every split
+        max_depth = [2,3,5] # Maximum number of levels in tree, make not to deep to prevent overfitting
+        # max_features = list(range(1,X.shape[1])) 
+        param_grid = {  'max_features': max_features,
+                         'max_depth': max_depth,
     
-   from sklearn.model_selection import RandomizedSearchCV, GridSearchCV
-   from sklearn.linear_model import LogisticRegression
-   from sklearn.ensemble import RandomForestClassifier
-   from sklearn.metrics import precision_recall_curve
-   from sklearn.metrics import average_precision_score
-   from sklearn.model_selection import RepeatedStratifiedKFold
-   import shap
-   import skopt
-   from skopt import BayesSearchCV
-   import random
-   import xgboost as xgb
-   import time as timer
-   from sklearn.metrics import roc_auc_score
-   from sklearn.metrics import confusion_matrix
-   from sklearn.metrics import precision_recall_curve
-   from sklearn.metrics import average_precision_score
-   from sklearn.metrics import brier_score_loss
-   
-   if model == 'RF':
-       # define search space
-       max_features = ['auto', 'log2','sqrt'] # Number of features to consider at every split
-       max_depth = [3,5,7,9] # Maximum number of levels in tree, make not to deep to prevent overfitting
+                        }
+         
+        clf = RandomForestClassifier(class_weight = 'balanced',verbose=0,n_estimators=n_trees)
+       
+    elif model == 'LR':
+        print('start Logistic regression')
+        param_grid = {'penalty':['l1', 'l2'],'C': np.logspace(-4, 4, 20),
+                           'solver': ['liblinear']}
+        clf = LogisticRegression(max_iter=100,class_weight = 'balanced',verbose=0)
         
-       param_grid = {  'max_features': max_features,
-                        'max_depth': max_depth
-                       }
+    elif model == 'NB':
+           print('modeling with Naive Bayes')
+           from sklearn.naive_bayes import GaussianNB
+           param_grid = {'var_smoothing': np.logspace(0,-9, num=100)}
+           clf = GaussianNB()
+            
+    cv = RepeatedStratifiedKFold(n_splits=10,n_repeats=1, random_state=random.randint(0, 10000))
+    search = BayesSearchCV(estimator=clf,scoring='roc_auc',n_iter=50,search_spaces=param_grid, n_jobs=-1, cv=cv)   
         
-       clf = RandomForestClassifier(class_weight = 'balanced',verbose=0,n_estimators=1000)
+    startTime = timer.time()
+    search.fit(X, y)
+    executionTime = (timer.time() - startTime)
+    print('Execution time for hyper optimization:',str(executionTime))
+    # report the best result
+    print('best Hyperparams after optiomization:',search.best_params_)
+        
+    clf = search.best_estimator_
       
-   elif model == 'LR':
     
-       param_grid = {'penalty':['l1', 'l2'],'C': np.logspace(-4, 4, 20),
-                          'solver': ['liblinear']}
-       clf = LogisticRegression(max_iter=100,class_weight = 'balanced',verbose=0)
-           
-   cv = RepeatedStratifiedKFold(n_splits=10,n_repeats=1, random_state=random.randint(0, 10000))
-   search = BayesSearchCV(estimator=clf,scoring='roc_auc',n_iter=50,search_spaces=param_grid, n_jobs=-1, cv=cv)   
-       
-   startTime = timer.time()
-   search.fit(X, y)
-   executionTime = (timer.time() - startTime)
-   print('Execution time for hyper optimization:',str(executionTime))
-   # report the best result
-   print('best Hyperparams after optiomization:',search.best_params_)
-       
-   clf = search.best_estimator_
-   
-   print('Performance on Train set:')
-   # Independend of threshold
-   predictions = clf.predict_proba(X)[:,1]
-   auc = roc_auc_score(y, predictions)
-   ap = average_precision_score(y, predictions)
-   print('AUC: ',auc, ' AP:', ap)
-   
-   if model == 'LR':
-       explainer = None
-   else:
-       explainer = shap.TreeExplainer(clf)
+    print('Performance on Train set:')
+    # Independend of threshold
+    predictions = clf.predict_proba(X)[:,1]
+    auc = roc_auc_score(y, predictions)
+    ap = average_precision_score(y, predictions)
+    print('AUC: ',auc, ' AP:', ap)
     
-   return clf, explainer
+    if model == 'LR' or model == 'NB':
+        explainer = None
+    else:
+        explainer = shap.TreeExplainer(clf)
+    
+    return clf, explainer,auc
     
 def train_model(X_train,y_train,X_test,y_test,model,n_trees = 1000,class_weight='balanced'):
    print('train_model triggered')
@@ -2083,13 +1851,15 @@ def train_model(X_train,y_train,X_test,y_test,model,n_trees = 1000,class_weight=
        auc_ret,ap_ret,_,_,_,_,p_ret,r_ret,t_ret = evaluate_metrics(clf_ret, X_test,y_test,NN=True)
    else:
        
+       
+       
        if model == 'RF':
            
            print('modeling with Random Forest')
            # define search space
           
            max_features = ['auto', 'log2','sqrt'] # Number of features to consider at every split
-           max_depth = [3,5,7] # Maximum number of levels in tree, make not to deep to prevent overfitting
+           max_depth = [2,3,5] # Maximum number of levels in tree, make not to deep to prevent overfitting
            
            param_grid = {  'max_features': max_features,
                            'max_depth': max_depth
@@ -2097,6 +1867,11 @@ def train_model(X_train,y_train,X_test,y_test,model,n_trees = 1000,class_weight=
            
            clf = RandomForestClassifier(class_weight = class_weight,verbose=0,n_estimators=n_trees)
           
+       elif model == 'NB':
+           print('modeling with Naive Bayes')
+           from sklearn.naive_bayes import GaussianNB
+           param_grid = {'var_smoothing': np.logspace(0,-9, num=100)}
+           clf = GaussianNB()
        
        elif model == 'SVM':
            print('modeling with support vector machine')
@@ -2146,32 +1921,46 @@ def train_model(X_train,y_train,X_test,y_test,model,n_trees = 1000,class_weight=
        print('Execution time',model,' for fitting without hyper optimization:',str(executionTime))
        
        print('Performance on test set with unoptimized model:')
-       base_auc,base_ap = evaluate_metrics(clf, X_test, y_test,X_train,y_train)
+       base_auc,base_ap,pred_tr,y_tr = evaluate_metrics(clf, X_test, y_test,X_train,y_train)
        
        clf_opt = search.best_estimator_
        print('Perfromance on test set with optimized model:')
-       opt_auc,opt_ap = evaluate_metrics(clf_opt, X_test,y_test,X_train,y_train)
+       opt_auc,opt_ap,opt_pred_tr,opt_y_tr = evaluate_metrics(clf_opt, X_test,y_test,X_train,y_train)
        
        print('Improvement of {:0.2f}%.'.format( 100 * (opt_auc - base_auc) / opt_auc))
        
-       #Pick the model with best performance on the test set
-       if opt_auc > base_auc:
-           clf_ret = clf_opt
-           ap_ret = opt_ap
-           auc_ret = opt_auc
-       else:
-           clf_ret = clf
-           ap_ret = base_ap
-           auc_ret = base_auc
+       
+       # Pick optimized model
+       clf_ret = clf_opt
+       ap_ret = opt_ap
+       auc_ret = opt_auc
+       pred_tr_ret = opt_pred_tr
+       y_tr_ret = opt_y_tr
+           
+       
+       # #Pick the model with best performance on the test set
+       # if opt_auc > base_auc:
+       #     clf_ret = clf_opt
+       #     ap_ret = opt_ap
+       #     auc_ret = opt_auc
+       #     pred_tr_ret = opt_pred_tr
+       #     y_tr_ret = opt_y_tr
+           
+       # else:
+       #     clf_ret = clf
+       #     ap_ret = base_ap
+       #     auc_ret = base_auc
+       #     pred_tr_ret = pred_tr
+       #     y_tr_ret = y_tr
            
    if (model == 'RF') or (model == 'XGB'):    
        explainer = shap.TreeExplainer(clf_ret)
    elif model == 'SVM':
        explainer = shap.KernelExplainer(clf_ret.predict,X_train)
-   elif model == 'LR':
+   elif model == 'LR' or model == 'NB':
        explainer = None
      
-   return clf_ret,explainer,auc_ret,ap_ret
+   return clf_ret,explainer,auc_ret,ap_ret,pred_tr_ret,y_tr_ret
 
 def predict(model, test_features):
     print('predict triggered')
@@ -2180,12 +1969,7 @@ def predict(model, test_features):
     
     return predictions
 
-def CM(model, test_features, test_labels,t):
-    from sklearn.metrics import confusion_matrix
-    proba = model.predict_proba(test_features)[:,1]
-    preds = (proba>t).astype(int)
-    tn, fp, fn, tp = confusion_matrix(test_labels, preds).ravel()
-    print('TN:',tn,'FP:',fp,'FN:',fn,'TP:',tp)
+
     
 def evaluate_metrics(model, test_features, test_labels,train_features, train_labels,plot=False,NN=False):
      
@@ -2229,12 +2013,12 @@ def evaluate_metrics(model, test_features, test_labels,train_features, train_lab
     print('Train set:')
     # Independend of threshold
     if NN:
-        predictions = model.predict(train_features)
+        predictions_train = model.predict(train_features)
     else:
-        predictions = model.predict_proba(train_features)[:,1]
+        predictions_train = model.predict_proba(train_features)[:,1]
         
-    auc = roc_auc_score(train_labels, predictions)
-    ap = average_precision_score(train_labels, predictions)
+    auc = roc_auc_score(train_labels, predictions_train)
+    ap = average_precision_score(train_labels, predictions_train)
     print('AUC: ',auc, ' AP:', ap)
     
     print('Test set:')
@@ -2249,102 +2033,8 @@ def evaluate_metrics(model, test_features, test_labels,train_features, train_lab
     print('AUC: ',auc, ' AP:', ap)
     
     
-    return auc,ap
+    return auc,ap,predictions_train,train_labels
     
-
-def plot_F_curve(f,t,t_opt,beta):
-    import matplotlib.pyplot as plt
-    fig = plt.figure()
-    plt.plot(t,f)
-    # plt.xlim(0,0.5)
-    # plt.ylim(0,1)
-    plt.axvline(x=t_opt,color = 'r')
-    plt.xlabel('Threshold')
-    plt.ylabel('F'+str(beta)+'-score')
-    plt.title('F'+str(beta)+'-score curve')
-    plt.savefig('F_curve',dpi=200)
-  
-
-def plot_PR_curve(p,r,pn,rn,pna,rna):
-    import matplotlib.pyplot as plt
-    fig = plt.figure()
-    plt.plot(r,p)
-    plt.plot(rn,pn)
-    plt.plot(rna,pna)
-    plt.legend(['Model','NEWS','No skill'])
-    plt.xlabel('Recall')
-    plt.ylabel('Precision')
-    
-    plt.savefig('results/PR_curve')
-    
-def plot_roc_curve(clf,X_val,y_val,clf_news,X_val_news,y_val_news):
-    import matplotlib.pyplot as plt
-    from sklearn import metrics
-    
-
-    plot1 = metrics.plot_roc_curve(clf, X_val, y_val)
-    plot = metrics.plot_roc_curve(clf_news, X_val_news, y_val_news,ax=plot1.ax_)
-    plt.legend(['Model','NEWS'])
-    plt.savefig('results/ROC_curve')
-
-
-def plot_feature_importance(clf,n,model):
-    import matplotlib.pyplot as plt
-    
-    if model == 'RF':
-        importances = clf.feature_importances_
-        
-    elif model == 'LR':
-        # print(np.abs(clf.coef_[0,:]))
-        importances = np.abs(clf.coef_[0,:])
-    # print(len(importances))
-    # print(importances)
-    summed_importances = list()
-    summed_importances.append(importances[0])
-    summed_importances.append(importances[1])
-    
-    lab_importances = importances[2:]
-    # print(len(lab_importances))
-    for i in np.arange(0,lab_importances.shape[0],n):
-        summed_importances.append(np.sum(lab_importances[i:i+n])/n)
-    
-    summed_importances = np.array(summed_importances)
-
-    
-    return summed_importances
-
-
-
-def stacked_barchart(names,df,name):
-    
-    # df = pd.DataFrame([v1,v2,v3])
-    # print(df)    
-    # #define chart parameters
-    N = df.shape[0]
-    barWidth = .5
-    xloc = np.arange(N)
-    
-    cols = df.columns
-    # #create stacked bar chart
-    plt.figure()
-    p1 = plt.bar(xloc, df[cols[0]], width=barWidth, color='springgreen')
-
-    p2 = plt.bar(xloc, df[cols[1]], bottom=df[cols[0]], width=barWidth, color='coral')
-    p3 = plt.bar(xloc, df[cols[2]], bottom=df[cols[1]]+df[cols[0]], width=barWidth, color='blue')
-    
-    # #add labels, title, tick marks, and legend
-    plt.ylabel('Relative feature vector')
-    # plt.xlabel('Data set')
-    plt.title('Imputation distribution')
-    plt.xticks(xloc, (names))
-    plt.xticks(rotation=90)
-    # plt.yticks(np.arange(0, 41, 5))
-    plt.legend((p1[0], p2[0],p3[0]), ('Median imputation', 'Feed Forward imputation','No imputation'))
-    plt.tight_layout()
-    plt.savefig('results/'+name,dpi=300)
-    # plt.show()
-    return df
-
 
 def isolate_class(df,label):
     
@@ -2565,7 +2255,48 @@ def subplot(dyn,ts,risks,news,features,pid,t_event,feature_impacts,label,t,dict_
                             
     return plt
             
-
+def MEWS(sat,HR,BP,RR,temp):
+    news = 0 #initalize MEWS score
+    
+    # resp rate
+    if RR >= 30:
+        news+=3
+    elif RR <= 8 or (RR >= 21 and RR <= 29):
+        news += 2
+    elif RR == 9 or RR == 19 or RR == 20:
+        news += 1
+    
+    # SpO2
+    if sat <= 91:
+        news+= 3
+    elif sat == 92 or sat == 93:
+        news+= 2
+    elif sat == 94 or sat == 95:
+        news+= 1
+    
+    #temp
+    if temp <= 35 or temp >= 38.5:
+        news+= 2
+        
+    # Bp
+    if BP <= 70:
+        news += 3
+    elif (BP >= 71 and BP <= 80) or (BP >= 200):
+        news += 2
+    elif BP >= 81 and BP <= 100:
+        news+= 1
+    
+    # HR
+    if HR >= 130:
+        news+= 3
+    elif (HR <= 39) or (HR >= 111 and HR <= 129):
+        news+= 2
+    elif (HR >= 40 and HR <= 50) or (HR >= 101 and HR <= 110):
+        news+=1
+    
+    # AVPU is assmued to be 'Alert' 
+    
+    return news 
 
 def NEWS(sat,HR,BP,RR,temp,oxy=True,AVPU =False):
     news = 0 #initalize news score
@@ -2618,7 +2349,7 @@ def NEWS(sat,HR,BP,RR,temp,oxy=True,AVPU =False):
     return news    
         
     
-def build_news(X_train,X_val,n,n_demo):
+def build_news(X_train,X_val,specs):
     
     # first merge val and test set
     # X_train =  np.concatenate((X_train, X_test), axis=0)
@@ -2626,20 +2357,42 @@ def build_news(X_train,X_val,n,n_demo):
     # EWS(RR,sat,temp,BP,HR,oxy=False,AVPU =False):
     news_train = []
     df = X_train
-    for i in range(df.shape[0]):
-        news_train.append(NEWS(df[i,n_demo+(n-1)],      #SpO2
-                               df[i,1+n_demo+(n-1)],    #HR
-                               df[i,2+n_demo+(n-1)],    #BP
-                               df[i,3+n_demo+(n-1)],    #Resp
-                               df[i,4+n_demo+(n-1)]))   #Temp
     df = X_val
     news_val = []
-    for i in range(df.shape[0]):
-        news_val.append(NEWS(df[i,n_demo+(n-1)],
-                               df[i,1+n_demo+(n-1)],
-                               df[i,2+n_demo+(n-1)],
-                               df[i,3+n_demo+(n-1)],
-                               df[i,4+n_demo+(n-1)]))
+    
+    n = specs['feature_window']
+    n_demo = specs['n_demo']
+    score = specs['NEWS']
+    
+    if score == 'NEWS':
+        for i in range(df.shape[0]):
+            news_train.append(NEWS(df[i,n_demo+(n-1)],      #SpO2
+                                   df[i,1+n_demo+(n-1)],    #HR
+                                   df[i,2+n_demo+(n-1)],    #BP
+                                   df[i,3+n_demo+(n-1)],    #Resp
+                                   df[i,4+n_demo+(n-1)]))   #Temp
+        
+        
+            news_val.append(NEWS(df[i,n_demo+(n-1)],
+                                   df[i,1+n_demo+(n-1)],
+                                   df[i,2+n_demo+(n-1)],
+                                   df[i,3+n_demo+(n-1)],
+                                   df[i,4+n_demo+(n-1)]))
+    
+    elif score == 'MEWS':
+        for i in range(df.shape[0]):
+            news_train.append(MEWS(df[i,n_demo+(n-1)],      #SpO2
+                                   df[i,1+n_demo+(n-1)],    #HR
+                                   df[i,2+n_demo+(n-1)],    #BP
+                                   df[i,3+n_demo+(n-1)],    #Resp
+                                   df[i,4+n_demo+(n-1)]))   #Temp
+        
+        
+            news_val.append(MEWS(df[i,n_demo+(n-1)],
+                                   df[i,1+n_demo+(n-1)],
+                                   df[i,2+n_demo+(n-1)],
+                                   df[i,3+n_demo+(n-1)],
+                                   df[i,4+n_demo+(n-1)]))
     
     news_train=np.array([np.array(x) for x in news_train])
     news_val=np.array([np.array(x) for x in news_val])
@@ -2703,41 +2456,63 @@ def AP_manually(p,r):
     return ap
 
 def make_total_features(features,specs,demo=True):
+    features = list(features)
+    features.remove('FiO2')
     
-    if (demo) & (specs['time']):
-        total_features = ['BMI',
+    if (demo) & (specs['time']) & (specs['NIV']):
+        total_features = ['SEX','BMI',
                            # 'AGE',
-                          'LOS']+list(features)
+                          'LOS']
+    
+    elif (demo) & (specs['time']):
+        total_features = ['SEX','BMI',
+                           # 'AGE',
+                          'LOS']
     elif demo:
-        total_features = ['BMI',
+        total_features = ['SEX','BMI',
                            # 'AGE'
-                          ]+list(features)
+                          ]
     else:
-        total_features = list(features)
-        
+        total_features = []
+    
+    if specs['NIV']:
+        print('NIV added')
+        total_features = total_features + ['NIV','FiO2','SpO2/FiO2']
+    
+    total_features = total_features + features
+    
     if specs['freq']:
         new_features = []
-        for i in features:
+        for i in ['SpO2','HR','BP','RR','Temp']:#features:
             new_features.append(i+str('_freq'))
         
         total_features.extend(new_features)
     if specs['inter']:
         new_features = []
-        for i in features:
+        for i in ['SpO2','HR','BP','RR','Temp']:#features:
             new_features.append(i+str('_inter'))
         
         total_features.extend(new_features)
+    
+    if specs['clocktime']:
+        new_features = []
+        for i in features:
+            new_features.append(i+str('_ass_time'))
+        
+        total_features.extend(new_features)
+    
     if specs['diff']:
         new_features = []
-        for i in ['SpO2','HR','BP','RR','Temp']:
+        for i in ['SpO2','HR','BP','RR']:
             new_features.append(i+str('_signed_diff'))
         
         total_features.extend(new_features)
     if specs['stats']:
-        stats = ['_max','_min','_mean','_median','_std','_diff_std']
-        for stat in stats:
+        stats = ['_max','_min','_mean','_median','_std','_diff_std','_signed_diff_2']#,'_diff_2_std']
+        stat_features = ['SpO2','HR','BP','RR']
+        for i in stat_features:
             new_features = []
-            for i in ['SpO2','HR','BP','RR','Temp']:
+            for stat in stats:
                 new_features.append(i+stat)
             
             total_features.extend(new_features)
@@ -2807,13 +2582,13 @@ def Utility_score(y_pred,y_true,y_t,y_pat,t,specs):
         
     return U_total
 
-def plot_Utility(Y,specs,prev):
+def plot_Utility(Y,specs):
     from sklearn.metrics import confusion_matrix
     import matplotlib.pyplot as plt
     
     y_true  = Y.label
     y_pred = Y.pred
-    y_t = Y.time_to_event
+    y_t = Y.t_to_event
     y_pat = Y.patient
     
     y_no_pred = pd.Series(np.zeros(Y.shape[0]))
@@ -2828,13 +2603,13 @@ def plot_Utility(Y,specs,prev):
     U_opt = sum(mask)
     
     t_space = np.linspace(0,1,20)
+    # t_space = np.arange(0,20,1)
     Us = []
     senses = []
     precs = []
     NPVs = []
     Joudens = []
-    precs_mercaldo = []
-    NPVs_mercaldo = []
+
     for t in t_space:
         print('threshold:',t)
         U_no_pred = Utility_score(y_no_pred,y_true,y_t,y_pat,t,specs) # Get Utility for model that never triggers
@@ -2859,9 +2634,7 @@ def plot_Utility(Y,specs,prev):
         spec = tn / (tn+fp)
         Jouden = sens+spec-1
         Joudens.append(Jouden)
-        NPV_mercaldo,PPV_mercaldo = mercaldo(sens,spec,prev)
-        precs_mercaldo.append(PPV_mercaldo)
-        NPVs_mercaldo.append(NPV_mercaldo)
+
         
         
     print(Us)
@@ -2869,37 +2642,51 @@ def plot_Utility(Y,specs,prev):
     plt.plot(t_space,Us,'r')
     plt.plot(t_space,senses,'b')
     plt.plot(t_space,precs,'c')
-    opt_t = t_space[np.where(Us == max(Us))]
-    plt.axvline(x = opt_t,color='r', linestyle='--')
+    plt.plot(t_space,NPVs,'g')
+    
+    # opt_t = t_space[np.where(Us == max(Us))]
+    # plt.axvline(x = opt_t,color='r', linestyle='--')
+    
     opt_jouden = t_space[np.where(Joudens == max(Joudens))]
     plt.axvline(x = opt_jouden,color='k', linestyle='--')
-    opt_prec = precs[np.where(t_space==opt_t)[0][0]]
-    plt.axhline(y=opt_prec,color='c', linestyle='--')
-    plt.text(0,opt_prec+0.02,str(np.round(opt_prec,3)),color='c')
-    opt_sens = senses[np.where(t_space==opt_t)[0][0]]
-    plt.axhline(y=opt_sens,color='b', linestyle='--')
-    plt.text(0,opt_sens+0.02,str(np.round(opt_sens,3)),color='b')
     
+    # opt_prec = precs[np.where(t_space==opt_t)[0][0]]
+    # plt.axhline(y=opt_prec,color='c', linestyle='--')
+    # plt.text(0,opt_prec+0.03,str(np.round(opt_prec,3)),color='c',fontsize=9)
     
+    # opt_sens = senses[np.where(t_space==opt_t)[0][0]]
+    # plt.axhline(y=opt_sens,color='b', linestyle='--')
+    # plt.text(0,opt_sens-0.06,str(np.round(opt_sens,3)),color='b',fontsize=9)
+    
+    jouden_prec = precs[np.where(t_space==opt_jouden)[0][0]]
+    plt.axhline(y=jouden_prec,color='c', linestyle='--')
+    plt.text(0,jouden_prec+0.03,str(np.round(jouden_prec,3)),color='c',fontsize=9)
+    
+    jouden_sens = senses[np.where(t_space==opt_jouden)[0][0]]
+    plt.axhline(y=jouden_sens,color='b', linestyle='--')
+    plt.text(0,jouden_sens+0.03,str(np.round(jouden_sens,3)),color='b',fontsize=9)
+    
+    plt.ylim(-0.4,1)
     plt.xlabel("thresholds")
-    plt.legend(['Normalized Utility score','sensitivity','precision','max Uility',"Max Youden's J"], prop={'size': 7},loc='lower_right')
+    plt.legend(['Normalized Utility score','sensitivity','PPV','NPV'
+                # ,'max Uility'
+                ,"Max Youden's J"
+                ], prop={'size': 7},loc='lower_right')
     
     # plt.ylabel("Normalized Utility score")
     plt.title('Utility Curve')
     plt.savefig('Utility_curve',dpi=300)
     
-    plt.figure()
-    # plt.plot(t_space,NPVs,'r')
-    plt.plot(t_space,precs,'b')
-    # plt.plot(t_space,NPVs_mercaldo,'y',linestyle='--')
-    plt.plot(t_space,precs_mercaldo,'c',linestyle='--')
-    # plt.legend(['NPV','PPV','NPV mercaldo','PPV mercaldo'])
-    plt.savefig('NPV_PPV',dpi=300)
+    # plt.figure()
+    # # plt.plot(t_space,NPVs,'r')
+    # plt.plot(t_space,precs,'b')
+    # plt.savefig('NPV_PPV',dpi=300)
 
 def mercaldo(sens,spec,prev):
     NPV = (spec*(1-prev))/((1-sens)*prev+spec*(1-prev))
     PPV = (sens*prev) / (sens*prev+(1-spec)*(1-prev))
-    return NPV,PPV    
+    return NPV,PPV
+   
 def make_table(df):
     ex = list()
     ex.append(str(np.round(np.mean(df.AGE),1))+' ('+str(np.round(np.std(df.AGE),1))+')')
