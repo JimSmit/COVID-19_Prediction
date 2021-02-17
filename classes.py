@@ -99,7 +99,7 @@ class ICU_model:
         
         return self.df,self.ids_events,self.df_demo
     
-    def Build_feature_vectors(self,i,name): # transform dataframe into matrix with feature vectors
+    def Build_feature_vectors(self): # transform dataframe into matrix with feature vectors
         
         self.X,self.y,entry_dens,self.y_pat,self.y_t,y_entry_dens = prepare_feature_vectors(self.df,self.df_demo,
                                                                                    self.ids_events,self.features,self.specs)

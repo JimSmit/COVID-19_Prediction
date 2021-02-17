@@ -44,14 +44,14 @@ n_keep = 50 # number of features to keep
 # Imputation strategy
 imputer='BR'    # imputer type: [KNN, BR (Bayesian Ridge)]
 knn = 2 #in case inputer is KNN, n neighbours
-initial_strategy = 'mean' # in case imputer is BR (Bayesian Ridge)
+initial_strategy = 'median' # in case imputer is BR (Bayesian Ridge)
 
 
 # print results
 prints_to_text = True
 save_model= True
-save_results_dir = '../results_16_02/LR_plus_3/int_val'
-save_model_dir = '../results_16_02/LR_plus_3/int_val'
+save_results_dir = '../results_17_02/BR/int_val'
+save_model_dir = '../results_17_02/BR/int_val'
 
 
 k = 5 # k repititions of cross-validation
@@ -124,7 +124,7 @@ ICU_model.import_vitals(inputs,encoders)
 df_vitals = ICU_model.clean_vitals()
 df_raw,features = ICU_model.merge()    #feature selection in this func
 df_full, ids_events,df_demo = ICU_model.fix_episodes()
-X_EMC,dens_2,Y_EMC = ICU_model.Build_feature_vectors(1,str(model)+'_'+str(n_features))
+X_EMC,dens_2,Y_EMC = ICU_model.Build_feature_vectors()
 
 
 
@@ -347,12 +347,12 @@ if save_model:
 axes[0,0].set_xlabel('Recall')
 axes[0,0].set_ylabel('Precision')
 axes[0,0].legend(loc='upper right', fontsize='small')
-axes[0,0].set_title('PR-curve NEWS')
+axes[0,0].set_title('PR-curve '+str(NEWS))
 
 axes[0,1].set_xlabel('FPR')
 axes[0,1].set_ylabel('Recall')
 axes[0,1].legend(loc='lower right', fontsize='small')
-axes[0,1].set_title('ROC NEWS')
+axes[0,1].set_title('ROC '+str(NEWS))
 
 axes[1,0].set_xlabel('Recall')
 axes[1,0].set_ylabel('Precision')
