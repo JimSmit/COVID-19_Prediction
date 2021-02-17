@@ -1652,10 +1652,15 @@ def Imputer_full_model(X,specs):
     if specs['imputer'] == 'KNN':
         from sklearn.impute import KNNImputer
         imputer = KNNImputer(n_neighbors=specs['knn'])
+    
     elif specs['imputer'] == 'BR':
         from sklearn.experimental import enable_iterative_imputer
         from sklearn.impute import IterativeImputer
         imputer = IterativeImputer(random_state=0,initial_strategy=specs['initial_strategy'])
+    
+    elif specs['imputer'] == 'median':
+        from sklearn.impute import SimpleImputer
+        imputer = SimpleImputer(missing_values=np.nan, strategy=specs['imputer'])    
     
     X_imp = imputer.fit_transform(X)
     return X_imp,imputer
@@ -1664,11 +1669,16 @@ def Imputer(X_train,X_val,X_test,specs):
     if specs['imputer'] == 'KNN':
         from sklearn.impute import KNNImputer
         imputer = KNNImputer(n_neighbors=specs['knn'])
+    
     elif specs['imputer'] == 'BR':
         from sklearn.experimental import enable_iterative_imputer
         from sklearn.impute import IterativeImputer
         imputer = IterativeImputer(random_state=0,initial_strategy=specs['initial_strategy'])
     
+    elif specs['imputer'] == 'median':
+        from sklearn.impute import SimpleImputer
+        imputer = SimpleImputer(missing_values=np.nan, strategy=specs['imputer']) 
+        
     imputer.fit(X_train)
     X_train = imputer.transform(X_train)
     X_val = imputer.transform(X_val)

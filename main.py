@@ -42,7 +42,7 @@ FS = False
 n_keep = 50 # number of features to keep
 
 # Imputation strategy
-imputer='BR'    # imputer type: [KNN, BR (Bayesian Ridge)]
+imputer='KNN'    # imputer type: [KNN, BR (Bayesian Ridge)]
 knn = 2 #in case inputer is KNN, n neighbours
 initial_strategy = 'median' # in case imputer is BR (Bayesian Ridge)
 
@@ -50,11 +50,12 @@ initial_strategy = 'median' # in case imputer is BR (Bayesian Ridge)
 # print results
 prints_to_text = True
 save_model= True
-save_results_dir = '../results_17_02/BR/int_val'
-save_model_dir = '../results_17_02/BR/int_val'
+save_results_dir = '../results_17_02/KNN/int_val'
+save_model_dir = '../results_17_02/KNN/int_val'
+d = '../results_17_02/KNN/full_model' # dir to save fully-trained model results
 
 
-k = 5 # k repititions of cross-validation
+k = 10 # k repititions of cross-validation
 
 # Input characteristics
 n_demo = 2  # number of demographics to include [AGE,SEX,BMI, LOS]
@@ -109,14 +110,14 @@ print('PRED W:',pred_window,'Hours')
 print('FEATURE W:',feature_window, 'samples')
 
 #%%
-# ICU_model = ICU_model()
+# ICU_model = Class()
 # data,data_vitals = ICU_model.import_MAASSTAD(inputs,encoders,specs)
 # features = ICU_model.clean_MAASSTAD(specs)
 # df_full,ids_events,df_demo = ICU_model.fix_episodes()
 # X_MSD,dens_2,Y_MSD = ICU_model.Build_feature_vectors(1,str(model)+'_'+str(n_features))
 #%%
 
-ICU_model = ICU_model()
+ICU_model = Class()
 ICU_model.import_cci(inputs)
 data, dict_unit = ICU_model.import_labs(inputs,encoders,specs)  # EMC data
 unique_labs = ICU_model.clean_labs(specs)
@@ -133,7 +134,7 @@ X_EMC,dens_2,Y_EMC = ICU_model.Build_feature_vectors()
 scaler,imputer,clf,explainer,auc = ICU_model.Train_full_model(model,n_trees)  # need to save: model, imputer algo, standard scaler, shap explainer, performance (AUC)
 
 
-d = '../results_16_02/LR_plus_3/full_model' # dir to save fully-trained model results
+
 
 import pickle
 filename = d+'/trained_model.sav'
@@ -410,11 +411,11 @@ if (model != 'LR') and (model != 'NB'):
     plt.savefig(save_results_dir+'/Gini_importance.png',dpi=200)
     
 #%% RE-RUN CLASS TO PREPARE MAASSTAD DATASET
-ICU_model = ICU_model()
+ICU_model = Class()
 data,data_vitals = ICU_model.import_MAASSTAD(inputs,encoders,specs)
 features = ICU_model.clean_MAASSTAD(specs)
 df_full,ids_events,df_demo = ICU_model.fix_episodes()
-X_MSD,dens_2,Y_MSD = ICU_model.Build_feature_vectors(1,str(model)+'_'+str(n_features))
+X_MSD,dens_2,Y_MSD = ICU_model.Build_feature_vectors()
 
 
 

@@ -18,7 +18,7 @@ import matplotlib.pyplot as plt
 from functions import *
 
 
-class ICU_model:
+class Class:
     def __init__(self):
 
         self.df_lab = pd.DataFrame
