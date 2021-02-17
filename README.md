@@ -30,11 +30,13 @@ It was inspired by the 2 mentioned studies, but differs from it in a couple of w
 (2) larger than the prediction window + gap, we labeled the sample as **negative**;
 (3) shorter than the gap, we labeled the sample as **negative**.
 
-
+<img src="https://raw.githubusercontent.com/JimSmit/COVID-19_Prediction/main/images/sampling_strategy.png" width="500">
 
 2. Used features:
+To include information about vital parameter trends, we added extra features using a moving feature window, including several statistics of the vital parameters measured withing the feature window (max, min, std, diff, mean, median)
 
 3. ML models
+We try different types of models, including simple linear models (Logistic regression)
 
 4. Imputation
 
