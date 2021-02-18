@@ -508,7 +508,7 @@ def cleaner_MAASSTAD(data,specs):
     mask = data['DESC'].isin(features)
     data = data[mask]
     
-    
+    data['OPNAMETYPE_RAW'] = data.OPNAMETYPE
     
     
     ids = np.unique(data['PATIENTNR']) # Unique IDs in dataset
@@ -522,11 +522,11 @@ def cleaner_MAASSTAD(data,specs):
     data  = data[~mask]
     
     col_list = ['PATIENTNR','BMI','LEEFTIJD','SEX',
-            'OPNAMETYPE','AFNAMEDATUM','DESC','UITSLAG','OPNAMEDATUM','ONTSLAGDATUM','DOSSIER_BEGINDATUM','DOSSIER_EINDDATUM','BESTEMMING']
+            'OPNAMETYPE','OPNAMETYPE_RAW','AFNAMEDATUM','DESC','UITSLAG','OPNAMEDATUM','ONTSLAGDATUM','DOSSIER_BEGINDATUM','DOSSIER_EINDDATUM','BESTEMMING']
     data = data[col_list]
 
     data.columns = ['ID','BMI','AGE','SEX',
-            'DEPARTMENT','TIME','VARIABLE','VALUE','ADMISSION','DISCHARGE','START','END','DEST']
+            'DEPARTMENT','OPNAMETYPE_RAW','TIME','VARIABLE','VALUE','ADMISSION','DISCHARGE','START','END','DEST']
     
     
     ids = np.unique(data['ID']) # Unique IDs in dataset
@@ -603,6 +603,7 @@ def cleaner_labs(data):
     data = data.astype({"UITSLAG": float})
     
 
+    data['OPNAMETYPE_RAW'] = data.OPNAMETYPE
     
     # labels
     data['OPNAMETYPE'] = data['OPNAMETYPE'].str.replace('PUK','Klinische opname')
@@ -701,14 +702,16 @@ def cleaner_vitals(data):
     data.loc[data.DESC == 'FiO2(set)','DESC'] = 'FiO2'
     # data['DESC'] = data['DESC'].str.replace('FiO2(set)','FiO2')
     
+    data['OPNAMETYPE_RAW'] = data.OPNAMETYPE
+    
     print(data['OPNAMETYPE'].unique())
     print('UNIQUE OPNAMETYPE VITALS: \n', data['OPNAMETYPE'].value_counts())
     
-    data = data[data['OPNAMETYPE']=='USER']
+    # data = data[data['OPNAMETYPE']=='USER']
     # data['OPNAMETYPE'] = data['OPNAMETYPE'].str.replace('ONBEKEND','USER')
     
-    print(data.shape)
-    data['OPNAMETYPE'] = data['OPNAMETYPE'].str.replace('USER','Klinische opname')
+    # print(data.shape)
+    # data['OPNAMETYPE'] = data['OPNAMETYPE'].str.replace('USER','Klinische opname')
     
     print('Unique types in vitals set:',data['OPNAMETYPE'].unique())
     df_vitals = data.reset_index(drop=True)
@@ -724,7 +727,11 @@ def df_merger(df_1,df_2,df_cci,specs):
     print(df_1['OPNAMETYPE'].value_counts())
     print(df_2['OPNAMETYPE'].value_counts())
     
+    print(df_1.columns)
+    print(df_2.columns)
     df = pd.concat([df_1,df_2],axis=0)
+    
+    print(df.columns)
     
     print('----Feature selection-----')
     
@@ -762,11 +769,11 @@ def df_merger(df_1,df_2,df_cci,specs):
 
     
     col_list = ['PATIENTNR','BMI','LEEFTIJD','SEX',
-            'OPNAMETYPE','AFNAMEDATUM','DESC','UITSLAG','OPNAMEDATUM','ONTSLAGDATUM','DOSSIER_BEGINDATUM','DOSSIER_EINDDATUM','BESTEMMING']
+            'OPNAMETYPE','OPNAMETYPE_RAW','AFNAMEDATUM','DESC','UITSLAG','OPNAMEDATUM','ONTSLAGDATUM','DOSSIER_BEGINDATUM','DOSSIER_EINDDATUM','BESTEMMING']
     df = df[col_list]
 
     df.columns =  ['ID','BMI','AGE','SEX',
-            'DEPARTMENT','TIME','VARIABLE','VALUE','ADMISSION','DISCHARGE','START','END','DEST']
+            'DEPARTMENT','OPNAMETYPE_RAW','TIME','VARIABLE','VALUE','ADMISSION','DISCHARGE','START','END','DEST']
    
     
     ids = np.unique(df['ID']) # Unique IDs in dataset
@@ -883,6 +890,8 @@ def fix_episodes(df,specs):
 
     print(df.shape)
 
+
+    # ------ First fix multiple admissions ------------
     A = pd.DataFrame()
     A['ID'] = np.unique(df.ID)
     a = list()
@@ -894,7 +903,7 @@ def fix_episodes(df,specs):
     A['A'] = a
     A['D'] = d
     
-    print(sum(A.A > 1),'episodial in',A.shape[0] ,'patients')
+    print(sum(A.A > 1),'multiple admissions in',A.shape[0] ,'patients')
     
     ids = A.ID[A.A>1].values # get IDs wiht multiple episodes
     df_new = df[~df['ID'].isin(ids)] # Define new df without these
@@ -926,54 +935,87 @@ def fix_episodes(df,specs):
                     df_new = pd.concat([df_new,snip])
                 
                 count+=1
+    
     df_new = df_new.reset_index(drop=True)
+    
+    
     print(df_new.shape, '(data without admission date is filtered')
     
-    
-    ids_event = []
+    # HERE FIND INDEXES WHO WERE ADMITTED TO ICU IMMEDIATELY
     ids_ICU_only = []
     
     for i in np.unique(df_new['ID']):
         ex = df_new[df_new['ID']==i].sort_values(by='TIME').reset_index(drop=True)
-        if ex['DEPARTMENT'][0] == 'IC':
-            ids_ICU_only.append(i)
-        elif (sum(ex.DEPARTMENT.str.contains('IC'))>0) & (ex.DEPARTMENT[0] == 'Klinische opname'):
-            ids_event.append(i)
-    
-    print(len(ids_event),' pos episodes')
+        
+        if ex[ex['DEPARTMENT'] == 'IC'].shape[0] < 1:
+            continue #No ICU admission found
+        else:
+            if ex[ex['DEPARTMENT'] == 'IC'].START.min() < ex.TIME.min():
+                ids_ICU_only.append(i)
+                
     print(len(ids_ICU_only), 'episodes who start at ICU (filtered)')
     df_new = df_new[~df_new.ID.isin(ids_ICU_only)] # Filter only IC patients
+    
+    # HERE FIND INDEXES WHO MADE TRANSFER CLINIC --> ICU
+    ids_event = []
+    
+    for i in df_new.ID.unique():
+        ex = df_new[df_new['ID']==i].sort_values(by='TIME').reset_index(drop=True)
+        if ex[ex['DEPARTMENT'] == 'IC'].shape[0] > 0:
+            ids_event.append(i)
+        
+    
     print(len(np.unique(df_new.ID)),' episodes total')
+    print(len(ids_event),' pos episodes')
     
+    # Fix episodes with multiple clinical episodes (ONLY KEEP MOST RECENT B4 ICU ADMISSION / DISCHARGE)
+    count = 0
+    ids = []
+    for i in df_new.ID.unique():
+        ex = df_new[df_new['ID']==i].sort_values(by='TIME').reset_index(drop=True)
+        if  ex[ex.DEPARTMENT != 'IC'].START.dropna().unique().shape[0] > 1:
+            count += 1
+            ids.append(i)
     
-    # Transfer episodes
+    print(count, ' number of episodes with multiple clinical episodes')
+    df_new_2 = df_new[~df_new['ID'].isin(ids)] # Define new df without these
+    
+    for i in ids:
+        ex = df_new[df_new['ID']==i].sort_values(by='TIME').reset_index(drop=True)
+        t = ex[ex.DEPARTMENT != 'IC'].START.dropna().max()
+        snip = ex[ex.TIME > t]
+        df_new_2 = pd.concat([df_new_2,snip])
+        
+    
+    # Fix Transfer episodes --> ONLY for non-event patients!
     print('Bestemmingen:')
-    print(df_new.DEST.value_counts())
+    print(df_new_2.DEST.value_counts())
     
     a = list()
     transfer_pats = pd.DataFrame()
-    for i in df_new.ID.unique():
-        ex = df_new[df_new.ID == i].sort_values(by='TIME').reset_index(drop=True)
+    
+    for i in df_new_2.ID.unique():
+        ex = df_new_2[df_new_2.ID == i].sort_values(by='TIME').reset_index(drop=True)
         if ((ex.DEST[0] == 'Ander ziekenhuis') | (ex.DEST[0] == 'Onbekend')| (ex.DEST[0] == 'Ziekenhuis buitenland')) & (i not in ids_event):
             a.append(i)
             ex_filtered = ex[ex['TIME']<(ex.TIME.max()-timedelta(hours=specs['pred_window']))]
             transfer_pats = pd.concat([transfer_pats,ex_filtered],axis=0)
     
     print(len(a),' Transfer tp other hospital patients identified')
-    mask = df_new.ID.isin(a)
+    mask = df_new_2.ID.isin(a)
     
-    df_new = df_new[~mask] # remove transfer from bulk
-    df_new = pd.concat([df_new,transfer_pats],axis=0) #merge again with filtered 'transfer' patients
+    df_new_2 = df_new_2[~mask] # remove transfer from bulk
+    df_new_2 = pd.concat([df_new_2,transfer_pats],axis=0) #merge again with filtered 'transfer' patients
     
     
-    df_new.columns = ['ID','BMI','AGE','SEX',
-            'DEPARTMENT','TIME','VARIABLE','VALUE','ADMISSION','DISCHARGE','START','END','DEST']
+    df_new_2.columns = ['ID','BMI','AGE','SEX',
+            'DEPARTMENT','OPNAMETYPE_RAW','TIME','VARIABLE','VALUE','ADMISSION','DISCHARGE','START','END','DEST']
 
  
     return df_new,ids_event
 
 
-def Demographics(df):  # create df with demographics for all IDs
+def Demographics(df,specs):  # create df with demographics for all IDs
     ids = np.unique(df['ID']) # Unique IDs in dataset
         
     # create df with Demographics data (BMI and AGE) -- >  df_demo
@@ -1001,8 +1043,9 @@ def Demographics(df):  # create df with demographics for all IDs
     
     df_demo = pd.DataFrame()
     df_demo['ID'] = ids
-    df_demo['SEX'] = sex
+    
     df_demo['BMI'] = bmi
+    df_demo['SEX'] = sex
     df_demo['AGE'] = age
     
     
@@ -1019,6 +1062,14 @@ def Demographics(df):  # create df with demographics for all IDs
     s_age = np.std(age[~age.isnull()])
     df_demo.loc[(df_demo['AGE'] < m_age - 3*s_age) | (df_demo['AGE'] > m_age + 3*s_age), 'AGE'] = np.nan
     print(m_age-3*s_age,m_age+3*s_age)
+    
+    # filter demogrohics to use
+    print(specs['n_demo'])
+    cols = ['ID'] + specs['n_demo']
+    
+    print(cols)
+    df_demo = df_demo[cols]
+    
     
     return df_demo
 
@@ -1127,7 +1178,7 @@ def Predict_full_model(clf,scaler,imputer,X,y):
     print('N feature vectors in validation fold:',len(y))
     print('Prevalence in validation fold:',sum(y)/len(y))
     
-    return predictions,X,auc
+    return predictions,X,auc,ap
 
 def prepare_feature_vectors(df,df_demo,ids_events,features,specs):
     print('prepare_feature_vectors triggered')
@@ -1171,6 +1222,7 @@ def prepare_feature_vectors(df,df_demo,ids_events,features,specs):
     y_pat = list()
     y_t = list()
     y = list()
+    ts = list()
     
     # empty lists for entry density
     entry_dens_full_pos = list()
@@ -1181,8 +1233,8 @@ def prepare_feature_vectors(df,df_demo,ids_events,features,specs):
     df_pos = df[df['ID'].isin(ids_events)]
     
     #ttransfer  dfs to numpy arrays, keep only ID, VARIABLE, TIME, VALUE, DEPARTMENT
-    df_pos = df_pos[['ID','VARIABLE','TIME','VALUE','DEPARTMENT','DISCHARGE','START']]
-    df_neg = df_neg[['ID','VARIABLE','TIME','VALUE','DEPARTMENT','DISCHARGE','START']]
+    df_pos = df_pos[['ID','VARIABLE','TIME','VALUE','DEPARTMENT','DISCHARGE','START','ADMISSION']]
+    df_neg = df_neg[['ID','VARIABLE','TIME','VALUE','DEPARTMENT','DISCHARGE','START','ADMISSION']]
     
     print('pos df:',df_pos.shape, '-->',len(df_pos['ID'].unique()), 'patients')
     print('neg df:',df_neg.shape, '-->',len(df_neg['ID'].unique()), 'patients')
@@ -1209,7 +1261,21 @@ def prepare_feature_vectors(df,df_demo,ids_events,features,specs):
         demo = df_demo[np.where(df_demo[:,0]==idx)][:,1:][0] # isolate pat in dmographics df
         
         t_event = patient[np.where(patient[:,4]=='IC')][:,6].min() # define moment of ICU admission 
-        total_los = np.round((t_event - patient[:,2].min()).total_seconds()/3600,0) # define total length-of-stay [hours]
+        
+        a = patient[:,7]  # all admission dates
+        a = pd.Series(a).dropna()
+        s = patient[np.where(patient[:,4] != 'IC')][:,6] # all start dates outside ICU
+        s = pd.Series(s).dropna()
+        
+        if (a.shape[0] ==0) and (s.shape[0] ==0):
+            t_start = patient[:,2].min() # If nothing available, use firts measuremnet time
+        
+        elif (a.shape[0] ==0) and (s.shape[0] > 0):
+            t_start = s.min()  # If no admission time avaliable but there is start time
+        else:
+            t_start = a.min() # If admission time is available use that
+        
+        total_los = np.round((t_event - t_start).total_seconds()/3600,0) # define total length-of-stay [hours]
         
 
         if total_los <= 0: # identify patients who's length of stay is negative
@@ -1243,7 +1309,9 @@ def prepare_feature_vectors(df,df_demo,ids_events,features,specs):
                 y_pat.append(1) # add patient label
                 y_t.append(t_to_event)
                 y.append(1)
+                ts.append(t)
                 entry_dens_patient.append(entry_dens) # collect all entry densities of single patient
+                
                 
             else: # if LOS > the sampling interval:
                 los = specs['int_pos'] # start sampling after first interval 
@@ -1279,26 +1347,22 @@ def prepare_feature_vectors(df,df_demo,ids_events,features,specs):
                     if (t_to_event <= (specs['pred_window']+specs['gap'])) & (t_to_event > specs['gap']):
                     # IF time-to-event is smaller then prediction window, but larger than gap --> label positive
                     
-                        vectors.append(v) # add feature vector to 'pos' list
                         pos_counter += 1
                         y.append(1)
-                        
-                        # print('sample in pred window')
+                            
                     elif t_to_event > (specs['pred_window']+specs['gap']):
                     # IF time-to-event is larger then prediction window + gap --> label negative (Too early)
                     
-                        vectors.append(v) # add feature vector to 'neg' list
                         y.append(0)
-                        # print('sample before pred window')
                     else:
                     # IF time-to-event is smaller then gap --> label negative (Too late)
                     
-                        vectors.append(v) # in GAP --> add feature vector to 'neg' list
                         y.append(0)
-                        # print('sample in GAP')
-                        
+                    
+                    vectors.append(v) 
                     y_pat.append(1) # add patient label
                     y_t.append(t_to_event)
+                    ts.append(t)
                     entry_dens_patient.append(entry_dens) # collect all entry densities of single patient
                         
                     los += specs['int_pos']
@@ -1318,7 +1382,7 @@ def prepare_feature_vectors(df,df_demo,ids_events,features,specs):
     print('-----Sampling for negative patient-----')
     count=0
     for idx in np.unique(df_neg[:,0]): # loop over negative patients
-        
+
         entry_dens_patient = list()
         
         patient = df_neg[np.where(df_neg[:,0]==idx)] # isolate df by patient ID
@@ -1333,7 +1397,20 @@ def prepare_feature_vectors(df,df_demo,ids_events,features,specs):
         else:            
             t_event = patient[:,5].min() # event = discharge time
         
-        total_los = np.round((t_event - patient[:,2].min()).total_seconds()/3600,0) # define total length-of-stay [hours]
+        a = patient[:,7]  # all admission dates
+        a = pd.Series(a).dropna()
+        s = patient[np.where(patient[:,4] != 'IC')][:,6] # all start dates outside ICU
+        s = pd.Series(s).dropna()
+        
+        if (a.shape[0] ==0) and (s.shape[0] ==0):
+            t_start = patient[:,2].min() # If nothing available, use firts measuremnet time
+        
+        elif (a.shape[0] ==0) and (s.shape[0] > 0):
+            t_start = s.min()  # If no admission time avaliable but there is start time
+        else:
+            t_start = a.min() # If admission time is available use that
+        
+        total_los = np.round((t_event - t_start).total_seconds()/3600,0) # define total length-of-stay [hours]
         
         if total_los <= 0: # identify patients who's length of stay is negative
             count += 1
@@ -1365,6 +1442,7 @@ def prepare_feature_vectors(df,df_demo,ids_events,features,specs):
                 y_t.append(t_to_event)
                 entry_dens_patient.append(entry_dens) # collect all entry densities of single patient
                 y.append(0)
+                ts.append(t)
                 
             else:   # if LOS > the sampling interval:
                 
@@ -1378,7 +1456,7 @@ def prepare_feature_vectors(df,df_demo,ids_events,features,specs):
                 
                 
                 runtime = np.min([total_los,entry_dens_window])
-                
+
                 while los < runtime:
                 
                     t = t + timedelta(hours=specs['int_neg'])
@@ -1403,13 +1481,14 @@ def prepare_feature_vectors(df,df_demo,ids_events,features,specs):
                     entry_dens_patient.append(entry_dens)  # collect all entry densities of single patient
                     y.append(0)   
                     los += specs['int_neg']
+                    ts.append(t)
          
         # collect entry densities of all neg patients
         if np.array(entry_dens_patient).shape[0] > 0:
             entry_dens_patient = list(np.array(entry_dens_patient).mean(axis=0))
             entry_dens_full_neg.append(entry_dens_patient)
         else:
-            print(idx)
+            print('No entry density for patient ',idx)
 
         
     print('number of neg patients with shorter stay than the defined GAP: ', count)            
@@ -1422,9 +1501,11 @@ def prepare_feature_vectors(df,df_demo,ids_events,features,specs):
     y_pat = np.array([np.array(x) for x in y_pat])
     y_t = np.array([np.array(x) for x in y_t])
     y = np.array([np.array(x) for x in y])
+    ts = np.array([np.array(x) for x in ts])
+    
     print('y shape:',y.shape)
     assert(np.isnan(y).any() == False)
-    assert(y.shape == y_pat.shape == y_t.shape)
+    assert(y.shape == y_pat.shape == y_t.shape == ts.shape)
     
     entry_dens_full_pos = np.array(entry_dens_full_pos)
     entry_dens_full_neg = np.array(entry_dens_full_neg)
@@ -1435,7 +1516,7 @@ def prepare_feature_vectors(df,df_demo,ids_events,features,specs):
     print(entry_dens_full.shape)
     
     
-    return X, y,entry_dens_full,y_pat,y_t,y_entry_dens             
+    return X, y,entry_dens_full,y_pat,y_t,y_entry_dens,ts             
         
 
     
@@ -1478,11 +1559,12 @@ def create_feature_window(df,demo,variables,los,specs,idx):
     
     n = specs['feature_window'] # Feature window
     info_miss_variables = ['SpO2','HR','BP','RR','Temp'] #variables to sample info-missingness features from
-    stat_features = ['SpO2','HR','BP','RR','po2_arterial','pco2_arterial','ph_arterial','pao2_over_fio2','base_excess'] #variables to sample stats features from
+    # stat_features = ['SpO2','HR','BP','RR','po2_arterial','pco2_arterial','ph_arterial','pao2_over_fio2','base_excess'] #variables to sample stats features from
+    stat_features = ['SpO2','RR'] #variables to sample stats features from
     
     # ------ Add demographics  ---------
     
-    for i in range(len(demo)-1): # -1 here causes AGE to be skipped
+    for i in range(len(demo)): # -1 here causes AGE to be skipped
         if np.isnan(demo[i]):
             v.append(np.nan)
         else:
@@ -2371,7 +2453,9 @@ def build_news(X_train,X_val,specs):
     news_val = []
     
     n = specs['feature_window']
-    n_demo = specs['n_demo']
+    n_demo = len(specs['n_demo'])
+    if specs['time']:
+        n_demo += 1
     score = specs['NEWS']
     
     if score == 'NEWS':
@@ -2470,16 +2554,22 @@ def make_total_features(features,specs,demo=True):
     features.remove('FiO2')
     
     if (demo) & (specs['time']) & (specs['NIV']):
-        total_features = ['SEX','BMI',
+        total_features = [
+                          # 'SEX',
+                          'BMI',
                            # 'AGE',
                           'LOS']
     
     elif (demo) & (specs['time']):
-        total_features = ['SEX','BMI',
+        total_features = [
+                          # 'SEX',
+                          'BMI',
                            # 'AGE',
                           'LOS']
     elif demo:
-        total_features = ['SEX','BMI',
+        total_features = [
+            # 'SEX',
+            'BMI',
                            # 'AGE'
                           ]
     else:
@@ -2519,7 +2609,10 @@ def make_total_features(features,specs,demo=True):
         total_features.extend(new_features)
     if specs['stats']:
         stats = ['_max','_min','_mean','_median','_std','_diff_std','_signed_diff_2']#,'_diff_2_std']
-        stat_features = ['SpO2','HR','BP','RR']
+        
+        # stat_features = ['SpO2','HR','BP','RR']
+        stat_features = ['SpO2','RR']
+        
         for i in stat_features:
             new_features = []
             for stat in stats:

@@ -95,13 +95,13 @@ class Class:
     def fix_episodes(self): # Go from patients to patient episodes (to handle re-admissions)
         # self.df,self.ids_events = fix_episodes(self.df_cleaned)
         self.df,self.ids_events = fix_episodes(self.df_cleaned,self.specs)
-        self.df_demo = Demographics(self.df)
+        self.df_demo = Demographics(self.df,self.specs)
         
         return self.df,self.ids_events,self.df_demo
     
     def Build_feature_vectors(self): # transform dataframe into matrix with feature vectors
         
-        self.X,self.y,entry_dens,self.y_pat,self.y_t,y_entry_dens = prepare_feature_vectors(self.df,self.df_demo,
+        self.X,self.y,entry_dens,self.y_pat,self.y_t,y_entry_dens,ts = prepare_feature_vectors(self.df,self.df_demo,
                                                                                    self.ids_events,self.features,self.specs)
         
         # get rid of infinity in X (if present)
@@ -153,10 +153,13 @@ class Class:
         Y['ID'] = self.X[:,-1]
         
         
-        return X_return,entry_dens,Y
+        return X_return,entry_dens,Y,self.X,ts
     
     
     def Train_full_model(self,model,n_trees): # Train model on full dataset
+        # Train imputer for raw data
+        print('start iputation with:',self.specs['imputer'])
+        _,self.imputer_raw = Imputer_full_model(self.X[:,:-1],self.specs) 
         # Normalize
         self.X_norm,self.scaler = Normalize_full(self.X[:,:-1]) 
         #Imputation
@@ -165,7 +168,7 @@ class Class:
         #Train
         self.clf,self.explainer,auc = train_full_model(self.X_norm_imp,self.y,model,n_trees)
 
-        return self.scaler,self.imputer,self.clf,self.explainer,auc
+        return self.scaler,self.imputer,self.imputer_raw,self.clf,self.explainer,auc
             
     def Prepare(self,random_state): # Data split, normalization and imputation for internal validation
         print('start preparing dataframes')
@@ -378,48 +381,32 @@ class Class:
         
         return 
     
-    def Proof_of_concept(self,clf,explainer,imputer,imputer_raw,  # Make dynamic plots for local feature importance / predicions
-                         df_val,median,df_demo_val,demo_median,
-                         df_val_raw,median_raw,df_demo_val_raw,demo_median_raw,
-                         t,inc_start,label,plot=True):
+    def Proof_of_concept(self,clf,scaler,explainer,imputer,imputer_raw,  # Make dynamic plots for local feature importance / predicions
+                         X,ids_events,ts,t,plot=True):
         import shap
         import matplotlib.pyplot as plt
-        
         shap.initjs()
-        df = isolate_class(df_val,label)
-        idxs = np.unique(df['ID'])
+        
+        # all available indexes:
+        
+        idx = np.unique(X[:,-1])
         
         
-        
-
         for i in range(
                 len(idxs)
                 # 1
                 ):
             print('\n Patient',i)
             # try:
-            X,X_raw,ts,t_event = prepare_feature_vectors_plot(df,median,df_demo_val,demo_median,
-                                                        df_val_raw,median_raw,df_demo_val_raw,demo_median_raw,
-                                                        self.features,i,self.specs,inc_start=inc_start,label=label)
-            from numpy import inf
-            X[X == inf] = np.nan
-            X[X == -inf] = np.nan
-            X_raw[X_raw == inf] = np.nan
-            X_raw[X_raw == -inf] = np.nan
             
-            X = imputer.transform(X)
-            X_raw_imputed = imputer_raw.transform(X_raw)
+            patient = X[np.where(X[:,-1] == idx)][:,:-1]
+            print(patient.shape)
             
-            print('shape X:',X.shape)
-            print('shape X_raw:',X_raw.shape)
-            print('shape df demo:',df_demo_val.shape)
+            total_features = make_total_features(self.features,self.specs)
+            print(total_features.shape)
             
-            # transform X_raw into pd Dataframe
-            
-            features_tot = self.total_features
-            X_raw = pd.DataFrame(X_raw,columns=features_tot)
-            X_raw_imputed = pd.DataFrame(X_raw_imputed,columns=features_tot)
-            
+            patient = pd.DataFrame(patient,columns=total_features)
+            #HEREEE
             if label == 'pos':
                 print('to ICU:',t_event)
             else:

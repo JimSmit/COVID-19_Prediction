@@ -41,8 +41,9 @@ n_trees = 1000      # in case of RF, number of trees
 FS = False 
 n_keep = 50 # number of features to keep
 
+
 # Imputation strategy
-imputer='KNN'    # imputer type: [KNN, BR (Bayesian Ridge)]
+imputer='BR'    # imputer type: [KNN, BR (Bayesian Ridge)]
 knn = 2 #in case inputer is KNN, n neighbours
 initial_strategy = 'median' # in case imputer is BR (Bayesian Ridge)
 
@@ -50,15 +51,15 @@ initial_strategy = 'median' # in case imputer is BR (Bayesian Ridge)
 # print results
 prints_to_text = True
 save_model= True
-save_results_dir = '../results_17_02/KNN/int_val'
-save_model_dir = '../results_17_02/KNN/int_val'
-d = '../results_17_02/KNN/full_model' # dir to save fully-trained model results
+save_results_dir = '../results_17_02/no_LOS/SPO2_RR_only/int_val'
+save_model_dir = '../results_17_02/no_LOS/SPO2_RR_only/int_val'
+d = '../results_17_02/no_LOS/SPO2_RR_only/full_model' # dir to save fully-trained model results
 
 
-k = 10 # k repititions of cross-validation
+k = 3 # k repititions of cross-validation
 
 # Input characteristics
-n_demo = 2  # number of demographics to include [AGE,SEX,BMI, LOS]
+n_demo = ['BMI'] #demographics to include [AGE,SEX,BMI]
 
 #sampling intervals
 int_neg = 24     #negative patients
@@ -74,7 +75,7 @@ entry_dens_window = None    # if True, window to check entry density [hours]
 
 balance=False
 policy = True # To filter no-ICU policy patients
-time=True   # To include LOS as a feature
+time=False   # To include LOS as a feature
 NIV = False     # To inlcude Non-nvasive Ventilation features
 
 # 'trend' Features
@@ -91,6 +92,7 @@ clocktime = False   # clocktime of request as a feature
 
 # Early warning score 
 NEWS = 'MEWS'       # type of Conventional EWS to be tested (NEWS / MEWS)
+
 
 # make dict with model specs
 specs = dict({'pred_window':pred_window,'gap':gap,'feature_window':feature_window,
@@ -114,7 +116,7 @@ print('FEATURE W:',feature_window, 'samples')
 # data,data_vitals = ICU_model.import_MAASSTAD(inputs,encoders,specs)
 # features = ICU_model.clean_MAASSTAD(specs)
 # df_full,ids_events,df_demo = ICU_model.fix_episodes()
-# X_MSD,dens_2,Y_MSD = ICU_model.Build_feature_vectors(1,str(model)+'_'+str(n_features))
+# X_MSD,dens_2,Y_MSD,X_MSD_full,ts = ICU_model.Build_feature_vectors(1,str(model)+'_'+str(n_features))
 #%%
 
 ICU_model = Class()
@@ -125,13 +127,13 @@ ICU_model.import_vitals(inputs,encoders)
 df_vitals = ICU_model.clean_vitals()
 df_raw,features = ICU_model.merge()    #feature selection in this func
 df_full, ids_events,df_demo = ICU_model.fix_episodes()
-X_EMC,dens_2,Y_EMC = ICU_model.Build_feature_vectors()
+X_EMC,dens_2,Y_EMC,X_EMC_full,ts = ICU_model.Build_feature_vectors()
 
 
 
 # %% TRAIN FULL MODEL
 
-scaler,imputer,clf,explainer,auc = ICU_model.Train_full_model(model,n_trees)  # need to save: model, imputer algo, standard scaler, shap explainer, performance (AUC)
+scaler,imputer,imputer_raw,clf,explainer,auc = ICU_model.Train_full_model(model,n_trees)  # need to save: model, imputer algo, standard scaler, shap explainer, performance (AUC)
 
 
 
@@ -149,6 +151,8 @@ pickle.dump(explainer, open(filename, 'wb'))
 filename = d+'/imputer_best.sav'
 pickle.dump(imputer, open(filename, 'wb'))
 
+filename = d+'/imputer_raw.sav'
+pickle.dump(imputer_raw, open(filename, 'wb'))
 
 
 
@@ -415,7 +419,7 @@ ICU_model = Class()
 data,data_vitals = ICU_model.import_MAASSTAD(inputs,encoders,specs)
 features = ICU_model.clean_MAASSTAD(specs)
 df_full,ids_events,df_demo = ICU_model.fix_episodes()
-X_MSD,dens_2,Y_MSD = ICU_model.Build_feature_vectors()
+X_MSD,dens_2,Y_MSD,X_MSD_full,ts = ICU_model.Build_feature_vectors()
 
 
 
@@ -431,20 +435,78 @@ filename = save_model_dir+'/explainer_best.sav'
 explainer = pickle.load(open(filename, 'rb'))
 filename = save_model_dir+'/imputer_best.sav'
 imputer = pickle.load(open(filename, 'rb'))
+filename = save_model_dir+'/imputer_raw_best.sav'
+imputer_raw = pickle.load(open(filename, 'rb'))
+
 
 # CHEK PERFORMANCE OF TRAINED MODEL ON MAASSTAD (EXTERNAL VALIDATION)
 X = X_MSD
 # X = np.delete(X,1,1)
 y = Y_MSD.label
 
-y_pred,X,auc = Predict_full_model(clf,scaler,imputer,X,y)    
+
+# calculate EWS
+X_news,_ = build_news(X,X,specs)
+precision_n, recall_n,fpr_n,_= results_news(X_news,y,'threshold')
+auc_n = metrics.auc(fpr_n, recall_n)
+ap_n = AP_manually(precision_n, recall_n)
+
+
+
+y_pred,X,auc,ap = Predict_full_model(clf,scaler,imputer,X,y)    
 from sklearn import datasets, metrics
 metrics.plot_roc_curve(clf, X, y)
+plt.step(fpr_n, recall_n, label='EWS')
+plt.legend(['Model AUC='+str(np.round(auc,2)),'EWS AUC='+str(np.round(auc_n,2))])
 plt.savefig(d + '/ROC_curve.png',dpi=300)
+
 from sklearn.metrics import precision_recall_curve
 precision, recall, thresholds = precision_recall_curve(y, y_pred)
 plt.figure()
-plt.plot(recall,precision)
+plt.plot(recall,precision,label='Model')
 plt.xlabel('Recall')
 plt.ylabel('Precision')
+plt.step(recall_n, precision_n, label='EWS')
+plt.legend(['Model AP=' + str(np.round(ap,2)) ,'EWS AP='+str(np.round(ap_n,2))])
 plt.savefig(d + '/PR_curve.png',dpi=300)
+
+
+
+
+#%%
+# # in case of LR, plot coefs
+
+if model == 'LR':
+    objects = make_total_features(features,specs)
+    y_pos = np.arange(len(objects))
+    performance = clf.coef_[0,:]
+    plt.figure()
+    plt.bar(y_pos, performance, align='center', alpha=0.5)
+    plt.xticks(y_pos, objects)
+    plt.tick_params(axis="x", rotation=90)
+    plt.ylabel('LR coeff')
+    plt.title('Logistic regression')
+    plt.tight_layout()
+    plt.savefig(d+'/LR_coefss.png',dpi=300)
+
+# from sklearn.inspection import plot_partial_dependence, partial_dependence
+# # plot the partial dependence
+# plot_partial_dependence(clf, X, [0, (0, 1)])
+
+# t = 0.2
+# label = 'pos'
+
+# if label == 'pos':
+#     X = X_MSD_full[np.where(y==1)]
+# else:
+#     X = X_MSD_full[~np.where(y==0)]
+    
+# # Proof of concept plot
+# ICU_model.Proof_of_concept(clf,scaler,explainer,imputer,imputer_raw,X,ids_events,ts,t,plot=True)
+        
+
+
+
+
+
+
