@@ -36,37 +36,19 @@ It was inspired by the 2 mentioned studies, but differs from it in a couple of w
 To include information about vital parameter trends, we added extra features using a moving feature window, including several statistics of the vital parameters measured withing the feature window (max, min, std, diff, mean, median)
 
 3. ML models
-We try different types of models, including simple linear models (Logistic regression)
+We try different types of models, including simple linear models and more complex non-linear models.
 
 4. Imputation
+Instead of median imputation, we train an imputer algorithm based on the training set. Scikitklearn's iterative imputer is used, which is simimlar to the R package MICE.
 
 5. Model validation by Cross-validation:
+A split is made to perform internal validation. The model is trained and optimized without any knowledge from the left-out validation set.
 
 6. Model interprestability:
-
-
-## ICU tranfer prediction model
-As the distribution of positive and negative feature vectors was imbalanced, the negative feature samples were drandomly downsampled untill bith classes were balanced. 
-A Random Forest was trained. Model hyperparameters were optimized using the following search spaces.
-
-<img src="https://raw.githubusercontent.com/JimSmit/COVID-19_Prediction/main/images/hyper.PNG" width="500">
-
-## Results
-The authors report the following results.
-
-<img src="https://raw.githubusercontent.com/JimSmit/COVID-19_Prediction/main/images/results.PNG" width="600">
-<img src="https://raw.githubusercontent.com/JimSmit/COVID-19_Prediction/main/images/results_plot.PNG" width="600">
-
-## Model Implementation
-In this post, a Python implementation is presented to train and validate a model in the same fashion as being done in the discussed paper. Therby, some extra implementations are added:
-- The size of the feature window (i.e. the number of most recent recorded assessments from time-series data to be included in the feature vector), prediction window and gap can be varied.
-- The sampling strategy can be varied as well. As the paper describes a sampling strategy that only includes feature vectors sampled within 20 and 84 hours from the moment of discharge, the performance of the model is likely to be overestimated, as we remain uninformed about the model's performance on feature vectors sampled earlier during hospitalization. 
-
-For example, would the model be able to distinguish between a feature vector sampled from a patient who eventually dies, 1 sampled 72 hours before disharge (so labeled positive) and 1 96 hours before discharge (so labeled negative)? In this implementation, we include feature vectors sampled during the whole stay of a patient, were the sampling frequency can be tuned for negative and positve feature vectors. We implementen the parameters 'int_neg' and 'int_pos' as the intervals (in hours) between every feeature vector being sampled for the negative and positive class respectively. 
-
-<img src="https://raw.githubusercontent.com/JimSmit/COVID-19_Prediction/main/images/sampling_startegy_new.png" width="700">
+To increase interpretability of the risks calculated by the model, patient- and time-specific feature importances are calculated by SHAP [3].
 
 
 
 1. Parchure P, Joshi H, Dharmarajan K, Freeman R, Reich DL, Mazumdar M, et al. Development and validation of a machine learning-based prediction model for near-term in-hospital mortality among patients with COVID-19. BMJ Support Palliat Care. 2020 Sep; 
 2. Cheng FY, Joshi H, Tandon P, Freeman R, Reich DL, Mazumdar M, et al. Using machine learning to predict ICU transfer in hospitalized COVID-19 patients. J Clin Med [Internet]. 2020;9(6). Available from: https://www.embase.com/search/results?subaction=viewrecord&id=L2004497780&from=export
+3. Lundberg SM, Lee S. A Unified Approach to Interpreting Model Predictions. 2017;(Section 2):1–10. 
