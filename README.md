@@ -49,6 +49,7 @@ To increase interpretability of the risks calculated by the model, patient- and 
 
 
 
+Literature:
 1. Parchure P, Joshi H, Dharmarajan K, Freeman R, Reich DL, Mazumdar M, et al. Development and validation of a machine learning-based prediction model for near-term in-hospital mortality among patients with COVID-19. BMJ Support Palliat Care. 2020 Sep; 
 2. Cheng FY, Joshi H, Tandon P, Freeman R, Reich DL, Mazumdar M, et al. Using machine learning to predict ICU transfer in hospitalized COVID-19 patients. J Clin Med [Internet]. 2020;9(6). Available from: https://www.embase.com/search/results?subaction=viewrecord&id=L2004497780&from=export
 3. Lundberg SM, Lee S. A Unified Approach to Interpreting Model Predictions. 2017;(Section 2):1–10. 
