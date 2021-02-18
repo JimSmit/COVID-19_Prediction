@@ -1,4 +1,4 @@
-# COVID-19_Prediction
+# COVID-19 Early Warning
 
 ## Introduction
 In their paper in the BMJ Supportive & Palliative Care in July 2020 [1], Parchure and colleagues propose a model to detect mortality in patients with COVID-19 infection based on multiple features including patient demographics, laboratory test results and vital parameters. 
