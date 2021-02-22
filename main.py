@@ -33,7 +33,7 @@ pred_window = 24    # [hours]
 gap = 0             # [hours]
 feature_window = 1  #[n samples back]
 moving_feature_window = 1000    # [hours]
-model = 'LR'        # type of classification model [RF,LR,SVM]
+model = 'RF'        # type of classification model [RF,LR,SVM]
 n_trees = 1000      # in case of RF, number of trees
 
 
@@ -51,12 +51,15 @@ initial_strategy = 'median' # in case imputer is BR (Bayesian Ridge)
 # print results
 prints_to_text = True
 save_model= True
-save_results_dir = '../results_17_02/no_LOS/SPO2_RR_only/int_val'
-save_model_dir = '../results_17_02/no_LOS/SPO2_RR_only/int_val'
-d = '../results_17_02/no_LOS/SPO2_RR_only/full_model' # dir to save fully-trained model results
+save_results_dir = '../results_18_02/no_LOS_RF_no_overfit/int_val'
+save_model_dir = '../results_18_02/no_LOS_RF_no_overfit/int_val'
+d = '../results_18_02/no_LOS_RF_no_overfit/full_model' # dir to save fully-trained model results
 
-
-k = 3 # k repititions of cross-validation
+# k repititions of cross-validation
+k = 5
+random_split = False
+ids_CV = None
+optimize_weights = True
 
 # Input characteristics
 n_demo = ['BMI'] #demographics to include [AGE,SEX,BMI]
@@ -67,7 +70,7 @@ int_pos = 24    # positive patients
 
 # CV shares
 val_share = 0.4     # data share to be in validation set
-test_share = 0.2    # data share in training set to be in test set (nested split)
+test_share = 0.1    # data share in training set to be in test set (nested split)
 
 # Make entry density plots
 entry_dens = False
@@ -112,47 +115,71 @@ print('PRED W:',pred_window,'Hours')
 print('FEATURE W:',feature_window, 'samples')
 
 #%%
-# ICU_model = Class()
-# data,data_vitals = ICU_model.import_MAASSTAD(inputs,encoders,specs)
-# features = ICU_model.clean_MAASSTAD(specs)
-# df_full,ids_events,df_demo = ICU_model.fix_episodes()
-# X_MSD,dens_2,Y_MSD,X_MSD_full,ts = ICU_model.Build_feature_vectors(1,str(model)+'_'+str(n_features))
-#%%
-
+print('Prepare MSD')
 ICU_model = Class()
+data,data_vitals = ICU_model.import_MAASSTAD(inputs,encoders,specs)
+features,df_MSD = ICU_model.clean_MAASSTAD(specs)
+
+
+
+# df_full_MSD,ids_events,df_demo = ICU_model.fix_episodes()
+# X_MSD,dens_2,Y_MSD,X_MSD_full,ts = ICU_model.Build_feature_vectors(1,str(model)+'_'+str(n_features))
+print('Prepare EMC')
+
 ICU_model.import_cci(inputs)
 data, dict_unit = ICU_model.import_labs(inputs,encoders,specs)  # EMC data
 unique_labs = ICU_model.clean_labs(specs)
 ICU_model.import_vitals(inputs,encoders)
 df_vitals = ICU_model.clean_vitals()
-df_raw,features = ICU_model.merge()    #feature selection in this func
-df_full, ids_events,df_demo = ICU_model.fix_episodes()
-X_EMC,dens_2,Y_EMC,X_EMC_full,ts = ICU_model.Build_feature_vectors()
+df_raw,features = ICU_model.merge_EMC()    #feature selection in this func
 
+ICU_model.fix_episodes()
+
+ids_events = ICU_model.merge()
+
+X,dens,Y,X_full,ts = ICU_model.Build_feature_vectors()
+
+
+if not random_split:
+    ids_all = list(np.unique(X_full[:,-1]))
+    ids_events = list(ids_events)
+    ids_no_events = [x for x in ids_all if x not in ids_events]
+    
+    # shuffle ids
+    random.shuffle(ids_events)
+    random.shuffle(ids_no_events)
+    big_ids_list = list()
+    n = int(len(ids_events)/k)
+    m = int(len(ids_no_events)/k)
+    for i in range(k): # create K equelly sized, stratified, splits
+        ids = ids_events[i*n:(i+1)*n] + ids_no_events[i*m:(i+1)*m]
+        big_ids_list.append(ids)
+       
+    
 
 
 # %% TRAIN FULL MODEL
 
-scaler,imputer,imputer_raw,clf,explainer,auc = ICU_model.Train_full_model(model,n_trees)  # need to save: model, imputer algo, standard scaler, shap explainer, performance (AUC)
+# scaler,imputer,imputer_raw,clf,explainer,auc = ICU_model.Train_full_model(model,n_trees)  # need to save: model, imputer algo, standard scaler, shap explainer, performance (AUC)
 
 
 
 
-import pickle
-filename = d+'/trained_model.sav'
-pickle.dump(clf, open(filename, 'wb'))
+# import pickle
+# filename = d+'/trained_model.sav'
+# pickle.dump(clf, open(filename, 'wb'))
 
-filename = d+'/scaler_best.sav'
-pickle.dump(scaler, open(filename, 'wb'))
+# filename = d+'/scaler_best.sav'
+# pickle.dump(scaler, open(filename, 'wb'))
 
-filename = d+'/explainer_best.sav'
-pickle.dump(explainer, open(filename, 'wb'))
+# filename = d+'/explainer_best.sav'
+# pickle.dump(explainer, open(filename, 'wb'))
 
-filename = d+'/imputer_best.sav'
-pickle.dump(imputer, open(filename, 'wb'))
+# filename = d+'/imputer_best.sav'
+# pickle.dump(imputer, open(filename, 'wb'))
 
-filename = d+'/imputer_raw.sav'
-pickle.dump(imputer_raw, open(filename, 'wb'))
+# filename = d+'/imputer_raw.sav'
+# pickle.dump(imputer_raw, open(filename, 'wb'))
 
 
 
@@ -192,13 +219,19 @@ aucs_model = [] # AUCs ML model
 aps_tr = [] # apperent Average precision (on training set)
 aucs_tr = [] # apperent AUCs (on training set)
 
+hyperparams = pd.DataFrame()
 
 for i in range(k):
+    
+    if not random_split:
+        ids_CV = np.array(big_ids_list[i])
+
+        
     
     print('------ Fold',i,' -----')
     
     # Prepare the raw dataset: Data splits, normalization, imputation
-    imputer_raw,imputer,y_pat,y_t,random_state,scaler = ICU_model.Prepare(random.randint(0, 10000))
+    imputer_raw,imputer,y_pat,y_t,random_state,scaler = ICU_model.Prepare(random.randint(0, 10000),ids_CV,random_split)
     y_ts.append(y_t)
     y_pats.append(y_pat)
     
@@ -208,7 +241,14 @@ for i in range(k):
         print('Running model with features: \n ',total_features)
     
     # Optimize model using train and test set    
-    clf,explainer,pred_tr,y_tr = ICU_model.Optimize() # Return trained model, SHAP explainer, Apparent performance (on train set)
+    if optimize_weights:
+        clf,explainer,pred_tr,y_tr,d_opt = ICU_model.Optimize_weights()
+    else:
+        clf,explainer,pred_tr,y_tr,d_opt = ICU_model.Optimize() # Return trained model, SHAP explainer, Apparent performance (on train set)
+    
+    hyperparams = pd.concat([hyperparams,pd.DataFrame(list(d_opt.values())).T],axis=0)
+    print(hyperparams.shape)
+    # hyperparams.columns = list(d_opt.keys())
     
     # Do predictions on validation set (internal validation), return label, probabilities, raw dataframe (for EWS) and normalized dataframe
     y_true,y_pred,X,X_val = ICU_model.Predict()
@@ -284,7 +324,7 @@ for i in range(k):
         
         
 print('best AUC found for validation fold:', i,' with: ', auc_best)
-
+print('Hyperparams: \n', hyperparams)
 
 # concatenate collected lists
 X_n_full = np.concatenate(X_n)
@@ -346,7 +386,7 @@ if save_model:
 
     pd.DataFrame(X_n_full).to_csv(save_model_dir+'/X_n_full.csv')
     pd.DataFrame(Y).to_csv(save_model_dir+'/Y.csv')
-    
+    hyperparams.to_csv(save_model_dir+'/Hyperparams.csv')
 
 # ---------- Fix axes labels / legend / titels for results figure  ---------------------
 axes[0,0].set_xlabel('Recall')
@@ -414,72 +454,10 @@ if (model != 'LR') and (model != 'NB'):
     plt.tight_layout()
     plt.savefig(save_results_dir+'/Gini_importance.png',dpi=200)
     
-#%% RE-RUN CLASS TO PREPARE MAASSTAD DATASET
-ICU_model = Class()
-data,data_vitals = ICU_model.import_MAASSTAD(inputs,encoders,specs)
-features = ICU_model.clean_MAASSTAD(specs)
-df_full,ids_events,df_demo = ICU_model.fix_episodes()
-X_MSD,dens_2,Y_MSD,X_MSD_full,ts = ICU_model.Build_feature_vectors()
-
-
-
-# %% LOAD MODEL
-import pickle
-
-
-filename = save_model_dir+'/trained_model.sav'
-clf = pickle.load(open(filename, 'rb'))
-filename = save_model_dir+'/scaler_best.sav'
-scaler = pickle.load(open(filename, 'rb'))
-filename = save_model_dir+'/explainer_best.sav'
-explainer = pickle.load(open(filename, 'rb'))
-filename = save_model_dir+'/imputer_best.sav'
-imputer = pickle.load(open(filename, 'rb'))
-filename = save_model_dir+'/imputer_raw_best.sav'
-imputer_raw = pickle.load(open(filename, 'rb'))
-
-
-# CHEK PERFORMANCE OF TRAINED MODEL ON MAASSTAD (EXTERNAL VALIDATION)
-X = X_MSD
-# X = np.delete(X,1,1)
-y = Y_MSD.label
-
-
-# calculate EWS
-X_news,_ = build_news(X,X,specs)
-precision_n, recall_n,fpr_n,_= results_news(X_news,y,'threshold')
-auc_n = metrics.auc(fpr_n, recall_n)
-ap_n = AP_manually(precision_n, recall_n)
-
-
-
-y_pred,X,auc,ap = Predict_full_model(clf,scaler,imputer,X,y)    
-from sklearn import datasets, metrics
-metrics.plot_roc_curve(clf, X, y)
-plt.step(fpr_n, recall_n, label='EWS')
-plt.legend(['Model AUC='+str(np.round(auc,2)),'EWS AUC='+str(np.round(auc_n,2))])
-plt.savefig(d + '/ROC_curve.png',dpi=300)
-
-from sklearn.metrics import precision_recall_curve
-precision, recall, thresholds = precision_recall_curve(y, y_pred)
-plt.figure()
-plt.plot(recall,precision,label='Model')
-plt.xlabel('Recall')
-plt.ylabel('Precision')
-plt.step(recall_n, precision_n, label='EWS')
-plt.legend(['Model AP=' + str(np.round(ap,2)) ,'EWS AP='+str(np.round(ap_n,2))])
-plt.savefig(d + '/PR_curve.png',dpi=300)
-
-
-
-
-#%%
-# # in case of LR, plot coefs
-
 if model == 'LR':
     objects = make_total_features(features,specs)
     y_pos = np.arange(len(objects))
-    performance = clf.coef_[0,:]
+    performance = clf_best.coef_[0,:]
     plt.figure()
     plt.bar(y_pos, performance, align='center', alpha=0.5)
     plt.xticks(y_pos, objects)
@@ -488,6 +466,71 @@ if model == 'LR':
     plt.title('Logistic regression')
     plt.tight_layout()
     plt.savefig(d+'/LR_coefss.png',dpi=300)
+
+    
+#%% RE-RUN CLASS TO PREPARE MAASSTAD DATASET
+# ICU_model = Class()
+# data,data_vitals = ICU_model.import_MAASSTAD(inputs,encoders,specs)
+# features = ICU_model.clean_MAASSTAD(specs)
+# df_full,ids_events,df_demo = ICU_model.fix_episodes()
+# X_MSD,dens_2,Y_MSD,X_MSD_full,ts = ICU_model.Build_feature_vectors()
+
+
+
+# %% LOAD MODEL
+# import pickle
+
+
+# filename = save_model_dir+'/trained_model.sav'
+# clf = pickle.load(open(filename, 'rb'))
+# filename = save_model_dir+'/scaler_best.sav'
+# scaler = pickle.load(open(filename, 'rb'))
+# filename = save_model_dir+'/explainer_best.sav'
+# explainer = pickle.load(open(filename, 'rb'))
+# filename = save_model_dir+'/imputer_best.sav'
+# imputer = pickle.load(open(filename, 'rb'))
+# filename = save_model_dir+'/imputer_raw_best.sav'
+# imputer_raw = pickle.load(open(filename, 'rb'))
+
+
+# # CHEK PERFORMANCE OF TRAINED MODEL ON MAASSTAD (EXTERNAL VALIDATION)
+# X = X_MSD
+# # X = np.delete(X,1,1)
+# y = Y_MSD.label
+
+
+# # calculate EWS
+# X_news,_ = build_news(X,X,specs)
+# precision_n, recall_n,fpr_n,_= results_news(X_news,y,'threshold')
+# auc_n = metrics.auc(fpr_n, recall_n)
+# ap_n = AP_manually(precision_n, recall_n)
+
+
+
+# y_pred,X,auc,ap = Predict_full_model(clf,scaler,imputer,X,y)    
+# from sklearn import datasets, metrics
+# metrics.plot_roc_curve(clf, X, y)
+# plt.step(fpr_n, recall_n, label='EWS')
+# plt.legend(['Model AUC='+str(np.round(auc,2)),'EWS AUC='+str(np.round(auc_n,2))])
+# plt.savefig(d + '/ROC_curve.png',dpi=300)
+
+# from sklearn.metrics import precision_recall_curve
+# precision, recall, thresholds = precision_recall_curve(y, y_pred)
+# plt.figure()
+# plt.plot(recall,precision,label='Model')
+# plt.xlabel('Recall')
+# plt.ylabel('Precision')
+# plt.step(recall_n, precision_n, label='EWS')
+# plt.legend(['Model AP=' + str(np.round(ap,2)) ,'EWS AP='+str(np.round(ap_n,2))])
+# plt.savefig(d + '/PR_curve.png',dpi=300)
+
+
+
+
+#%%
+# # in case of LR, plot coefs
+
+
 
 # from sklearn.inspection import plot_partial_dependence, partial_dependence
 # # plot the partial dependence

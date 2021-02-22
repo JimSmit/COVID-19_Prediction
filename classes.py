@@ -51,6 +51,10 @@ class Class:
         self.explainer = None
         self.df_cci = pd.DataFrame
         self.clf_NEWS = None
+        self.df_combined = pd.DataFrame()
+        self.df_demo_combined = pd.DataFrame()
+        self.ids_events_combined = np.array([])
+    
     
     def import_cci(self,inputs):  # file with No ICU policy information
         self.df_cci = importer_cci(inputs[2])
@@ -62,10 +66,10 @@ class Class:
     
     def clean_MAASSTAD(self,specs): # Clean Maasstad file
         self.specs = specs
-        self.df_cleaned,self.features = cleaner_MAASSTAD(self.df_imported,self.specs)
+        self.df_cleaned_MSD,self.features = cleaner_MAASSTAD(self.df_imported,self.specs)
         # self.ids_IC_only, self.ids_all, self.ids_clinic, self.ids_events = get_ids(self.df_cleaned)
         
-        return self.features
+        return self.features,self.df_cleaned_MSD
     
     def import_labs(self,inputs,encoders,specs): #load Labs EMC
         self.specs = specs
@@ -85,19 +89,30 @@ class Class:
         self.df_vitals = cleaner_vitals(self.df_vitals_raw)
         return self.df_vitals
         
-    def merge(self): # Merge labs and vitals EMC
+    def merge_EMC(self): # Merge labs and vitals EMC
         
-        self.df_cleaned,self.features = df_merger(self.df_lab,self.df_vitals,self.df_cci,self.specs)
+        self.df_cleaned_EMC,self.features = df_merger(self.df_lab,self.df_vitals,self.df_cci,self.specs)
        
-        return self.df_cleaned,self.features
-         
+        return self.df_cleaned_EMC,self.features
     
+
     def fix_episodes(self): # Go from patients to patient episodes (to handle re-admissions)
         # self.df,self.ids_events = fix_episodes(self.df_cleaned)
-        self.df,self.ids_events = fix_episodes(self.df_cleaned,self.specs)
-        self.df_demo = Demographics(self.df,self.specs)
+        print('fix episodes EMC')
+        self.df_EMC,self.ids_events_EMC = fix_episodes(self.df_cleaned_EMC,self.specs)
+        self.df_demo_EMC= Demographics(self.df_EMC,self.specs)
         
-        return self.df,self.ids_events,self.df_demo
+        print('fix episodes MSD')
+        self.df_MSD,self.ids_events_MSD = fix_episodes(self.df_cleaned_MSD,self.specs)
+        self.df_demo_MSD = Demographics(self.df_MSD,self.specs)
+        
+    def merge(self):
+        
+        self.df = pd.concat([self.df_EMC,self.df_MSD],axis = 0)
+        self.df_demo = pd.concat([self.df_demo_EMC,self.df_demo_MSD],axis = 0)
+        self.ids_events = np.concatenate([self.ids_events_EMC,self.ids_events_MSD])
+        
+        return self.ids_events
     
     def Build_feature_vectors(self): # transform dataframe into matrix with feature vectors
         
@@ -170,13 +185,16 @@ class Class:
 
         return self.scaler,self.imputer,self.imputer_raw,self.clf,self.explainer,auc
             
-    def Prepare(self,random_state): # Data split, normalization and imputation for internal validation
+    
+    def Prepare(self,random_state,ids_CV,random_split): # Data split, normalization and imputation for internal validation
         print('start preparing dataframes')
         
-        self.X_train_raw,self.y_train,self.X_val_raw,self.y_val,self.y_val_pat,self.y_val_t,self.X_test_raw,self.y_test = Split(self.X,
-                                                                                                self.y,self.y_pat,self.y_t,self.ids_events,
-                                                                                                          random_state,self.specs) 
-        
+                                                            
+        self.X_train_raw,self.y_train,self.X_val_raw,self.y_val,self.y_val_pat,self.y_val_t,self.X_test_raw,self.y_test = Split(
+                                                                                                self.X,self.y,self.y_pat,
+                                                                                                self.y_t,self.ids_events,random_state,
+                                                                                                self.specs,ids_CV,random_split) 
+         
         # Normalize
         self.X_train,self.X_val,self.X_test,self.scaler = Normalize(self.X_train_raw,self.X_val_raw, self.X_test_raw,self.specs) 
         
@@ -232,13 +250,12 @@ class Class:
             self.X_val = self.selector.transform(self.X_val)
             self.X_test = self.selector.transform(self.X_test)
         
-        self.clf,self.explainer,_,_,pred_tr,y_tr = train_model(self.X_train,self.y_train,self.X_test,self.y_test,self.specs['model'],n_trees=self.specs['n_trees'],class_weight='balanced')
+        self.clf,self.explainer,_,_,pred_tr,y_tr,d_opt = train_model(self.X_train,self.y_train,self.X_test,self.y_test,self.specs['model'],n_trees=self.specs['n_trees'],class_weight='balanced')
         
-        return self.clf,self.explainer,pred_tr,y_tr
+        return self.clf,self.explainer,pred_tr,y_tr,d_opt
         
     def Optimize_weights(self): # Optional: optimize class weights with gridsearch
         print('start optimizing weights')
-        import matplotlib.pyplot as plt
         
         
         if self.specs['FS']:
@@ -246,35 +263,33 @@ class Class:
             self.X_val = self.selector.transform(self.X_val)
             self.X_test = self.selector.transform(self.X_test)
         
-        fig = plt.figure(figsize=(15,8))
-        ax = fig.add_subplot(1,1,1)
-        ax.set_xlim([-0.05,1.05])
-        ax.set_ylim([-0.05,1.05])
-        ax.set_xlabel('Recall')
-        ax.set_ylabel('Precision')
-        ax.set_title('PR Curve')
+
         weights = [
             # 15        
             1,5,10,15,20,30
                    ]
-        best_ap = 0
-        t_best = 0        
+        
+        # initiate with 'balanced' weight
+        w_best = 'balanced'
+        self.clf,self.explainer,best_auc,_,pred_tr_best,y_tr_best,d_opt_best = train_model(self.X_train,self.y_train,self.X_test,self.y_test,self.specs['model'],n_trees=self.specs['n_trees'],class_weight='balanced')
         for w,k in zip(weights,'bgrcmykw'):
             print('working on class weight:',w)
   
-            clf,train_auc,explainer,p,r,ap,t = train_model(self.X_train,self.y_train,self.X_test,self.y_test,self.specs['model'],n_trees=self.specs['n_trees'],class_weight={0:1,1:w})
-                
-            ax.plot(r,p,c=k,label=w)
-            if ap > best_ap:
-                best_ap = ap
-                print('better AP with weight:',w)
+            clf,explainer,auc,_,pred_tr,y_tr,d_opt = train_model(self.X_train,self.y_train,self.X_test,self.y_test,self.specs['model'],n_trees=self.specs['n_trees'],class_weight={0:1,1:w})
+
+            if auc > best_auc:
+                best_auc = auc
+                print('better AUC with weight:',w)
                 self.clf = clf
                 self.explainer = explainer
-                t_best = t
-        ax.legend(loc='lower left')    
-
-        
-        return t_best
+                pred_tr_best = pred_tr
+                y_tr_best = y_tr
+                w_best = w    
+                d_opt_best = d_opt
+                
+        print('best weight:', w)
+        # print('best hyperparams:',)
+        return self.clf,self.explainer,pred_tr_best,y_tr_best,d_opt_best
     
     def Predict(self): # Make predictions on validation set
         

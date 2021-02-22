@@ -29,11 +29,8 @@ def importer_cci(file):
     df = pd.read_excel(file, header=0)
     
     type_lib = {
-                'ID':int,
-                'SEKS':float,
-                'AGE':float,
+                'ID':float,
                 'LIM': float,
-                'NIV':float,
                 }
     df = df.astype(type_lib)
     
@@ -514,12 +511,14 @@ def cleaner_MAASSTAD(data,specs):
     ids = np.unique(data['PATIENTNR']) # Unique IDs in dataset
     print('N patients left:',len(ids))
     
+    print(data.shape)
     # filter patients with No IC policy
     no_ic_data = data[data['NOICU']=='ja']
     ids = np.unique(no_ic_data.PATIENTNR)
     print(len(ids),' patients with No ICU policy')
     mask = data.PATIENTNR.isin(ids)
     data  = data[~mask]
+    print(data.shape)
     
     col_list = ['PATIENTNR','BMI','LEEFTIJD','SEX',
             'OPNAMETYPE','OPNAMETYPE_RAW','AFNAMEDATUM','DESC','UITSLAG','OPNAMEDATUM','ONTSLAGDATUM','DOSSIER_BEGINDATUM','DOSSIER_EINDDATUM','BESTEMMING']
@@ -818,11 +817,12 @@ def df_merger(df_1,df_2,df_cci,specs):
     df = df[~mask]
     print('n patients left after removed for too little data:',len(df['ID'].unique()))
     
+    print(df.shape)
     if specs['policy']:
         print('Filter NO-IC policy patients')
         # Filter No-ICU policy patients
         
-        pol_idx = df_cci[(df_cci['LIM'] == 1)|(df_cci['LIM'] == 5)]['ID'].values
+        pol_idx = df_cci[(df_cci['LIM'] == 1)|(df_cci['LIM'] == 5)]['ID'].values # also take doubts
         
         print('n patients left:',len(df['ID'].unique()))
         mask =  pd.Series(ids).isin(pol_idx)
@@ -903,11 +903,25 @@ def fix_episodes(df,specs):
     A['A'] = a
     A['D'] = d
     
-    print(sum(A.A > 1),'multiple admissions in',A.shape[0] ,'patients')
     
-    ids = A.ID[A.A>1].values # get IDs wiht multiple episodes
+    
+    count_no_adm_date = A[A['A']==0].shape[0]
+    ids_no_adm = A[A['A']==0].ID
+    df = df[~df['ID'].isin(ids_no_adm)] # Define new df without these
+    print(count_no_adm_date, 'patients filtered because no admission data available')
+    
+    count_no_dis_date = A[A['D']==0].shape[0]
+    ids_no_dis = A[A['D']==0].ID
+    df = df[~df['ID'].isin(ids_no_dis)] # Define new df without these
+    print(count_no_dis_date, 'patients filtered because no discharge data available')
+    
+    print(df['ID'].unique().shape[0],' patients left')
+    
+    
+    print(sum(A.A > 1),'multiple admissions')
+    
+    ids = A.ID[A.A>1].values # get IDs wiht multiple admission dates
     df_new = df[~df['ID'].isin(ids)] # Define new df without these
-    
     
     for i in ids:
         ex = df[df['ID']==i]
@@ -915,19 +929,9 @@ def fix_episodes(df,specs):
         admss = np.unique(ex.ADMISSION.dropna())
         diss = np.unique(ex.DISCHARGE.dropna())
         count = 0
-    
-    if len(admss) != len(diss):
-        for i in range(len(admss)-1):
-            snip = ex[(ex.TIME >= admss[i])&(ex.TIME <= diss[i])].reset_index(drop=True)
-            if snip.shape[0] > 0:
-                snip.loc[:,'ID'] = snip.loc[0,'ID'] + '_' + str(count)
-                
-                df_new = pd.concat([df_new,snip])
-            
-            count+=1
-    else:
-        for i in range(len(admss)):
-                
+        
+        if len(admss) != len(diss):
+            for i in range(len(admss)-1):
                 snip = ex[(ex.TIME >= admss[i])&(ex.TIME <= diss[i])].reset_index(drop=True)
                 if snip.shape[0] > 0:
                     snip.loc[:,'ID'] = snip.loc[0,'ID'] + '_' + str(count)
@@ -935,11 +939,22 @@ def fix_episodes(df,specs):
                     df_new = pd.concat([df_new,snip])
                 
                 count+=1
+        else:
+            for i in range(len(admss)):
+                snip = ex[(ex.TIME >= admss[i])&(ex.TIME <= diss[i])].reset_index(drop=True)
+                if snip.shape[0] > 0:
+                    snip.loc[:,'ID'] = snip.loc[0,'ID'] + '_' + str(count)
+                    
+                    df_new = pd.concat([df_new,snip])
+                    
+                count+=1
     
     df_new = df_new.reset_index(drop=True)
     
     
-    print(df_new.shape, '(data without admission date is filtered')
+    
+    print(df_new.shape)
+    print(len(np.unique(df_new.ID)),' episodes total')            
     
     # HERE FIND INDEXES WHO WERE ADMITTED TO ICU IMMEDIATELY
     ids_ICU_only = []
@@ -953,8 +968,11 @@ def fix_episodes(df,specs):
             if ex[ex['DEPARTMENT'] == 'IC'].START.min() < ex.TIME.min():
                 ids_ICU_only.append(i)
                 
+                
+    
     print(len(ids_ICU_only), 'episodes who start at ICU (filtered)')
     df_new = df_new[~df_new.ID.isin(ids_ICU_only)] # Filter only IC patients
+    print(len(np.unique(df_new.ID)),' episodes left')
     
     # HERE FIND INDEXES WHO MADE TRANSFER CLINIC --> ICU
     ids_event = []
@@ -964,32 +982,31 @@ def fix_episodes(df,specs):
         if ex[ex['DEPARTMENT'] == 'IC'].shape[0] > 0:
             ids_event.append(i)
         
-    
-    print(len(np.unique(df_new.ID)),' episodes total')
-    print(len(ids_event),' pos episodes')
+    print('of which ',len(ids_event),' pos episodes')
     
     # Fix episodes with multiple clinical episodes (ONLY KEEP MOST RECENT B4 ICU ADMISSION / DISCHARGE)
-    count = 0
-    ids = []
-    for i in df_new.ID.unique():
-        ex = df_new[df_new['ID']==i].sort_values(by='TIME').reset_index(drop=True)
-        if  ex[ex.DEPARTMENT != 'IC'].START.dropna().unique().shape[0] > 1:
-            count += 1
-            ids.append(i)
+    # count = 0
+    # ids = []
+    # for i in df_new.ID.unique():
+    #     ex = df_new[df_new['ID']==i].sort_values(by='TIME').reset_index(drop=True)
+    #     if  ex[ex.DEPARTMENT != 'IC'].START.dropna().unique().shape[0] > 1:
+    #         count += 1
+    #         ids.append(i)
     
-    print(count, ' number of episodes with multiple clinical episodes')
-    df_new_2 = df_new[~df_new['ID'].isin(ids)] # Define new df without these
+    # print(count, ' number of episodes with multiple clinical episodes')
+    # df_new_2 = df_new[~df_new['ID'].isin(ids)] # Define new df without these
     
-    for i in ids:
-        ex = df_new[df_new['ID']==i].sort_values(by='TIME').reset_index(drop=True)
-        t = ex[ex.DEPARTMENT != 'IC'].START.dropna().max()
-        snip = ex[ex.TIME > t]
-        df_new_2 = pd.concat([df_new_2,snip])
+    # for i in ids:
+    #     ex = df_new[df_new['ID']==i].sort_values(by='TIME').reset_index(drop=True)
+    #     t = ex[ex.DEPARTMENT != 'IC'].START.dropna().max()
+    #     snip = ex[ex.TIME > t]
+    #     df_new_2 = pd.concat([df_new_2,snip])
         
     
-    # Fix Transfer episodes --> ONLY for non-event patients!
-    print('Bestemmingen:')
-    print(df_new_2.DEST.value_counts())
+    # # Fix Transfer episodes --> ONLY for non-event patients!
+    # print('Bestemmingen:')
+    # print(df_new_2.DEST.value_counts())
+    df_new_2 = df_new
     
     a = list()
     transfer_pats = pd.DataFrame()
@@ -1073,7 +1090,8 @@ def Demographics(df,specs):  # create df with demographics for all IDs
     
     return df_demo
 
-def Split(X,y,y_pat,y_t,ids_events,random_state,specs):
+
+def Split(X,y,y_pat,y_t,ids_events,random_state,specs,ids_CV,random_split):
     
     
     from sklearn.model_selection import train_test_split
@@ -1085,9 +1103,15 @@ def Split(X,y,y_pat,y_t,ids_events,random_state,specs):
     print(' TOTAL ids:', len(ids))
     # Split raw df in training and validation set on patient level:
     
-    ids_train,ids_val = train_test_split(ids, test_size=specs['val_share'],random_state=random_state,
-                                         stratify=np.in1d(ids,ids_events))
+        
+    if random_split:
+        ids_train,ids_val = train_test_split(ids, test_size=specs['val_share'],random_state=random_state,
+                                             stratify=np.in1d(ids,ids_events))
    
+    else:
+        ids_val = ids_CV
+                
+        ids_train = np.array([x for x in list(ids) if x not in list(ids_val)])
     
     
     X_train_full = X[np.nonzero(ids_train[:,None] == X[:,-1])[1],:]
@@ -1107,6 +1131,15 @@ def Split(X,y,y_pat,y_t,ids_events,random_state,specs):
         
     X_test = X_train_full[np.nonzero(ids_test[:,None] == X_train_full[:,-1])[1],:]
     y_test = y_train_full[np.nonzero(ids_test[:,None] == X_train_full[:,-1])[1]]
+    
+    
+    # assert no Ids are overlapping
+    train = list(ids_train)
+    test = list(ids_test)
+    val = list(ids_val)
+    assert len([x for x in test if x in train]) == 0
+    assert len([x for x in val if x in train]) == 0
+    
     
     # Remove Patient IDs from X
     X_train = X_train[:,:-1]
@@ -1559,8 +1592,8 @@ def create_feature_window(df,demo,variables,los,specs,idx):
     
     n = specs['feature_window'] # Feature window
     info_miss_variables = ['SpO2','HR','BP','RR','Temp'] #variables to sample info-missingness features from
-    # stat_features = ['SpO2','HR','BP','RR','po2_arterial','pco2_arterial','ph_arterial','pao2_over_fio2','base_excess'] #variables to sample stats features from
-    stat_features = ['SpO2','RR'] #variables to sample stats features from
+    stat_features = ['SpO2','HR','BP','RR','po2_arterial','pco2_arterial','ph_arterial','pao2_over_fio2','base_excess'] #variables to sample stats features from
+    # stat_features = ['SpO2','RR'] #variables to sample stats features from
     
     # ------ Add demographics  ---------
     
@@ -1766,7 +1799,8 @@ def Imputer(X_train,X_val,X_test,specs):
     X_val = imputer.transform(X_val)
     X_test = imputer.transform(X_test)
     
-    print('NaNs imputed with KNN Imputer')
+    print('NaNs imputed with', specs['imputer'])
+    
     return X_train,X_val,X_test,imputer
 
     
@@ -1951,7 +1985,7 @@ def train_model(X_train,y_train,X_test,y_test,model,n_trees = 1000,class_weight=
            # define search space
           
            max_features = ['auto', 'log2','sqrt'] # Number of features to consider at every split
-           max_depth = [2,3,5] # Maximum number of levels in tree, make not to deep to prevent overfitting
+           max_depth = [2,3] # Maximum number of levels in tree, make not to deep to prevent overfitting
            
            param_grid = {  'max_features': max_features,
                            'max_depth': max_depth
@@ -1997,7 +2031,7 @@ def train_model(X_train,y_train,X_test,y_test,model,n_trees = 1000,class_weight=
           
 
        cv = RepeatedStratifiedKFold(n_splits=10,n_repeats=1, random_state=random.randint(0, 10000))
-       search = BayesSearchCV(estimator=clf,scoring='roc_auc',n_iter=50,search_spaces=param_grid, n_jobs=-1, cv=cv)   
+       search = BayesSearchCV(estimator=clf,scoring='roc_auc',n_iter=25,search_spaces=param_grid, n_jobs=-1, cv=cv)   
        
        startTime = timer.time()
        search.fit(X_train, y_train)
@@ -2052,7 +2086,7 @@ def train_model(X_train,y_train,X_test,y_test,model,n_trees = 1000,class_weight=
    elif model == 'LR' or model == 'NB':
        explainer = None
      
-   return clf_ret,explainer,auc_ret,ap_ret,pred_tr_ret,y_tr_ret
+   return clf_ret,explainer,auc_ret,ap_ret,pred_tr_ret,y_tr_ret,search.best_params_
 
 def predict(model, test_features):
     print('predict triggered')
@@ -2610,8 +2644,8 @@ def make_total_features(features,specs,demo=True):
     if specs['stats']:
         stats = ['_max','_min','_mean','_median','_std','_diff_std','_signed_diff_2']#,'_diff_2_std']
         
-        # stat_features = ['SpO2','HR','BP','RR']
-        stat_features = ['SpO2','RR']
+        stat_features = ['SpO2','HR','BP','RR']
+        # stat_features = ['SpO2','RR']
         
         for i in stat_features:
             new_features = []
