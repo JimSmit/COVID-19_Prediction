@@ -44,7 +44,7 @@ Instead of median imputation, we train an imputer algorithm based on the trainin
 5. Model validation by Cross-validation:
 A split is made to perform internal validation. The model is trained and optimized without any knowledge from the left-out validation set.
 
-6. Model interprestability:
+6. Model interpretability:
 To increase interpretability of the risks calculated by the model, patient- and time-specific feature importances are calculated by SHAP [3].
 
 
