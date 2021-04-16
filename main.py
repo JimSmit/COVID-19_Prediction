@@ -21,8 +21,7 @@ from functions import *
 from classes import *
 
 # Define lists with input files
-inputs = ['../../Data_EMC/20210208_covid data_lab.xlsx','../../Data_EMC/20210208_covid data_metingen.xlsx','../../Data_EMC/pirate.xlsx',
-          '../../Data_EMC/MCOLS aanlevering _ 20210126_V3.xlsx']
+inputs = []
 
 # list with pd.read_excel encoders
 encoders = ['utf-8',"ISO-8859-1",'ascii']
